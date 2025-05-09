@@ -3,10 +3,10 @@
 """@package STATview
 Visualizes dot graphs outputted by STAT."""
 
-__copyright__ = """Modifications Copyright (C) 2022 Intel Corporation
+__copyright__ = """Modifications Copyright (C) 2022-2025 Intel Corporation
 SPDX-License-Identifier: BSD-3-Clause"""
 __license__ = """Produced by Intel Corporation for Lawrence Livermore National Security, LLC.
-Written by M. Oguzhan Karakaya oguzhan.karakaya@intel.com
+Written by Matti Puputti matti.puputti@intel.com, M. Oguzhan Karakaya oguzhan.karakaya@intel.com
 LLNL-CODE-750488.
 All rights reserved.
 
@@ -20,21 +20,29 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL LAWRENCE LIVERMORE NATIONAL SECURITY, LLC, THE U.S. DEPARTMENT OF ENERGY OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__author__ = ["M. Oguzhan Karakaya <oguzhan.karakaya@intel.com>"]
+__author__ = ["Abdul Basit Ijaz <abdul.b.ijaz@intel.com>", "Matti Puputti <matti.puputti@intel.com>", "M. Oguzhan Karakaya <oguzhan.karakaya@intel.com>"]
 __version_major__ = 4
 __version_minor__ = 1
 __version_revision__ = 0
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
 import unittest
-from oneapi_gdb import OneAPIGdbDriver, parse_thread_info_line, parse_frameinfo_from_backtrace
+from oneapi_gdb import OneAPIGdbDriver, parse_frameinfo_from_backtrace, parse_thread_info_mi
+
+t1_gpu = {'id':8,'target-id':'"Thread 8"','name':'"3.1 (ZE 0.0.0.0)"','execution-mask':'"0xf"','simd-width':4,'state':'"stopped"'}
+t2_gpu = {'id':9,'target-id':'"Thread 9"','name':'"3.2 (ZE 0.0.0.1)"','execution-mask':'"0x1"','simd-width':4,'state':'"stopped"'}
+t3_gpu = {'id':12,'target-id':'"Thread 12"','name':'"3.5 (ZE 0.0.0.4)"','execution-mask':'"0x3"','simd-width':4,'state':'"stopped"'}
+t4_gpu_running = {'id':13,'target-id':'"Thread 12"','name':'"3.6 (ZE 0.0.0.4)"','execution-mask':'"0x3"','simd-width':4,'state':'"running"'}
+t5_gpu_unavailable = {'id':13,'target-id':'"Thread 12"','name':'"3.6 (ZE 0.0.0.4)"','execution-mask':'"0x3"','simd-width':4,'state':'"unavailable"'}
+# Test for expand_simd_spec_mi function.
+t6_gpu_zero_emask = {'id':13,'target-id':'"Thread 13"','name':'"3.6 (ZE 0.0.0.4)"','simd-width':32, 'execution-mask':'"0x0', 'state':'"running"'}
+t_cpu = {'id':1,'target-id':'"Thread 1"','name':'"main"', 'state':'"stopped"','core':53}
 
 class TestGDBParsing(unittest.TestCase):
     """
     Testing OneAPIGdbDriver and utility functions
     in oneapi_gdb module
     """
-
     def test_oneapigdbdriver_class_statics(self):
         """
         Tests class static variables
@@ -44,68 +52,63 @@ class TestGDBParsing(unittest.TestCase):
 
     def test_info_threads(self):
         """
-        Tests parse_thread_info_line method
+        Tests parse_thread_info_mi method
         """
 
-        tids = parse_thread_info_line(
-            "2.1    Thread 1.1073741824",
+        tids = parse_thread_info_mi(
+            {'threads':[t1_gpu,t2_gpu,t3_gpu]},
             parse_simd_lanes=False)
-        self.assertEqual(tids, ["2.1"])
+        self.assertEqual(tids, ["3.1", "3.2", "3.5"])
 
-        tids = parse_thread_info_line(
-            "  * 2.1    Thread 1.1073741824",
+        tids = parse_thread_info_mi(
+                {'threads':[t1_gpu,t2_gpu,t3_gpu], 'current-thread-id':'"8"'},
             parse_simd_lanes=False)
-        self.assertEqual(tids, ["2.1"])
+        self.assertEqual(tids, ["3.1", "3.2", "3.5"])
 
-        tids = parse_thread_info_line(
-            "2.1    Thread 1.1073741824",
+        tids = parse_thread_info_mi(
+            {'threads':[t_cpu]},
             parse_simd_lanes=True)
-        self.assertEqual(tids, ["2.1"])
+        self.assertEqual(tids, ["1"])
 
-        tids = parse_thread_info_line(
-            "  * 2.1    Thread 1.1073741824",
+        tids = parse_thread_info_mi(
+            {'threads':[t_cpu], 'current-thread-id':"1"},
             parse_simd_lanes=True)
-        self.assertEqual(tids, ["2.1"])
+        self.assertEqual(tids, ["1"])
 
-        tids = parse_thread_info_line(
-            "2.1:[1-7]    Thread 1.1073741824",
-            parse_simd_lanes=False)
-        self.assertEqual(tids, ["2.1"])
-
-        tids = parse_thread_info_line(
-            "2.1:[1-7]    Thread 1.1073741824",
+        tids = parse_thread_info_mi(
+            {'threads':[t1_gpu]},
             parse_simd_lanes=True)
-        self.assertEqual(tids, ["2.1:1",
-            "2.1:2", "2.1:3", "2.1:4",
-            "2.1:5", "2.1:6", "2.1:7" ])
+        self.assertEqual(tids, ["3.1:0", "3.1:1", "3.1:2", "3.1:3"])
 
-        tids = parse_thread_info_line(
-            "2.1:[1,3-4,7]    Thread 1.1073741824",
+        tids = parse_thread_info_mi(
+            {'threads':[t1_gpu, t2_gpu], 'current-thread-id':"8"},
             parse_simd_lanes=True)
-        self.assertEqual(tids, ["2.1:1",
-            "2.1:3", "2.1:4", "2.1:7" ])
+        self.assertEqual(tids, ["3.1:0", "3.1:1", "3.1:2", "3.1:3", "3.2:0"])
 
-        tids = parse_thread_info_line(
-            "2.1:[1 3 5 7]    Thread 1.1073741824",
+        tids = parse_thread_info_mi(
+            {'threads':[t1_gpu, t3_gpu]},
             parse_simd_lanes=True)
-        self.assertEqual(tids, ["2.1:1",
-            "2.1:3", "2.1:5", "2.1:7" ])
+        self.assertEqual(tids, ["3.1:0", "3.1:1", "3.1:2", "3.1:3", "3.5:0", "3.5:1"])
 
-        tids = parse_thread_info_line(
-            "96:[0-2]     LWP 1073742144",
+        tids = parse_thread_info_mi(
+            {'threads':[t2_gpu, t4_gpu_running]},
             parse_simd_lanes=True)
-        self.assertEqual(tids, ["96:0",
-            "96:1", "96:2"])
+        self.assertEqual(tids, ["3.2:0", "3.6:0", "3.6:1"])
 
-        tids = parse_thread_info_line(
-            "96:[0-2]     LWP 1073742144",
-            parse_simd_lanes=False)
-        self.assertEqual(tids, ["96"])
-
-        tids = parse_thread_info_line(
-            "    wiID=\"2.1\") at test.cpp:72",
+        tids = parse_thread_info_mi(
+            {'threads':[t2_gpu, t5_gpu_unavailable]},
             parse_simd_lanes=True)
-        self.assertEqual(tids, [])
+        self.assertEqual(tids, ["3.2:0"])
+
+        tids = parse_thread_info_mi(
+            {'threads':[t2_gpu, t6_gpu_zero_emask]},
+            parse_simd_lanes=True)
+        self.assertEqual(tids, ["3.2:0"])
+
+        tids = parse_thread_info_mi(
+            {'threads':[t_cpu, t2_gpu]},
+            parse_simd_lanes=True)
+        self.assertEqual(tids, ["1", "3.2:0"])
 
     def test_bt(self):
         """

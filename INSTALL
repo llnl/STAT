@@ -37,7 +37,8 @@ Dependent Packages
    Python module can optionally be installed to allow the STAT GUI
    to perform syntax highlighting of source code. Another GUI
    requirement is the Graphviz package to render the DOT format
-   graph files.
+   graph files. The Python module "pygdbmi" is required for using
+   gdb-oneapi.
 
    STAT can also be optionally built with the Fast Global File
    Status (FGFS) library. This library helps STAT identify when a

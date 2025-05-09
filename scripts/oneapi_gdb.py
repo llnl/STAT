@@ -3,10 +3,10 @@
 """@package STATview
 Visualizes dot graphs outputted by STAT."""
 
-__copyright__ = """Modifications Copyright (C) 2022 Intel Corporation
+__copyright__ = """Modifications Copyright (C) 2022-2025 Intel Corporation
 SPDX-License-Identifier: BSD-3-Clause"""
 __license__ = """Produced by Intel Corporation for Lawrence Livermore National Security, LLC.
-Written by M. Oguzhan Karakaya oguzhan.karakaya@intel.com
+Written by Matti Puputti matti.puputti@intel.com, M. Oguzhan Karakaya oguzhan.karakaya@intel.com
 LLNL-CODE-750488.
 All rights reserved.
 
@@ -20,7 +20,7 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL LAWRENCE LIVERMORE NATIONAL SECURITY, LLC, THE U.S. DEPARTMENT OF ENERGY OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__author__ = ["M. Oguzhan Karakaya <oguzhan.karakaya@intel.com>"]
+__author__ = ["Abdul Basit Ijaz <abdul.b.ijaz@intel.com>", "Matti Puputti <matti.puputti@intel.com>", "M. Oguzhan Karakaya <oguzhan.karakaya@intel.com>"]
 __version_major__ = 4
 __version_minor__ = 1
 __version_revision__ = 0
@@ -31,47 +31,107 @@ import os
 import logging
 import re
 from gdb import GdbDriver, check_lines
+from pygdbmi import gdbmiparser
 
-def expand_simd_spec(simd):
+def expand_simd_spec_mi(simd_width, emask):
     """
-    Converts a merged simd specifier into a list of individual simd lanes.
-    `simd` string is expected to be either an individual lane number
-    or a comma-separated range list inside square brackets.
+    Converts a simd_width and exection_mask input to list
+    of lanes.
     """
-    if simd[0] == '[':
-        simd = simd[1:]
+
+    lane = 0
     lanes = []
-    for item1 in simd.split(" "):
-        for item2 in item1.split(","):
-            if item2.isnumeric():
-                lanes += item2
-            else:
-                pair = item2.split("-")
-                for num in range(int(pair[0]), int(pair[1])+1):
-                    lanes += str(num)
+    while emask != 0:
+        if (emask & 0x1) != 0:
+            lanes.append(lane)
+
+        lane += 1
+        emask >>= 1
+
     return lanes
 
-def parse_thread_info_line(line, parse_simd_lanes = False):
+def is_gpu_thread_found(name):
     """
-    Extracts thread IDs from a `thread info` output produced by
-    Intel(R) Distribution for GDB*. See oneapi_gdb_test.py for
-    sample inputs and outputs.
+    Returns 'True' if the Thread name contains 'ZE' character.
     """
-    tid_single_simd = re.compile(
-        r"^[\s|*]*(\d+(\.?\d+)?)(?:(?::(\d+))?)\s*(?:Thread|LWP)")
-    tid_multiple_simd = re.compile(
-        r"^[\s|*]*(\d+(\.?\d+)?)(?:(?::\[(.*?)\])?)\s*(?:Thread|LWP)")
-    match = re.search(tid_multiple_simd, line)
-    if not match:
+    return any([x in name for x in ('ZE')])
+
+def is_cpu_thread_found(name):
+    """
+    Returns 'True' if Thread name contains any of the matching
+    characters 'LWP', 'Thread'.
+    """
+    return any([x in name for x in ('LWP', 'Thread')])
+
+def parse_thread_info_mi(mi_rsp, parse_simd_lanes = False):
+    """
+    The function takes the MI command response in Python dictionary
+    object as an input and returns the list of thread ids. The SIMD
+    lane information is also added if the optional 'parse_simd_lanes'
+    argument is true.
+    """
+
+    key, value = list(mi_rsp.items())[0]
+    if key != "threads":
+        logging.info('GDB MI response does not has any thread info')
         return []
+
+    thread_ids_gpu = [thread['name'].split(" ")[0].replace('"', "")
+        for thread in value if ('name' in thread
+                                and is_gpu_thread_found(thread['name'])
+                                and 'state' in thread
+                                and "unavailable" not in thread['state'])]
+    thread_ids_cpu = [str(thread['id']) for thread in value
+        if ('name' in thread and not is_gpu_thread_found(thread['name'])
+            and is_cpu_thread_found(thread['target-id'])
+            and 'state' in thread and "unavailable" not in thread['state'])]
+    thread_ids = thread_ids_cpu + thread_ids_gpu
     if not parse_simd_lanes:
-        return [ match[1] ]
-    if not match[3]:
-        match = re.search(tid_single_simd, line)
-        if not match[3]:
-            return [ match[1] ]
-        return [ match[1] + ":" + match[3]]
-    return [ match[1] + ":" + x for x in expand_simd_spec(match[3]) ]
+        return thread_ids
+
+    simd_widths = dict()
+    simd_found = False
+
+    for tid in thread_ids:
+        simd = [thread['simd-width'] for thread in value
+                if ('simd-width' in thread
+                    and tid == thread['name'].split(" ")[0].replace('"', ""))]
+        emask = [thread['execution-mask'] for thread in value
+                 if ('execution-mask' in thread
+                     and tid == thread['name'].split(" ")[0].replace('"', ""))]
+
+        simd_widths[tid] = []
+        if simd and emask:
+            simd_widths[tid].append(str(simd[0]).replace('"',''))
+            simd_widths[tid].append(str(emask[0]).replace('"', ''))
+            simd_found = True
+        else:
+            simd_widths[tid].append("0")
+            simd_widths[tid].append("0")
+
+    if not simd_found:
+        return thread_ids
+
+    thread_ids_simd = []
+    for tid, value in simd_widths.items():
+        if not value:
+            continue
+
+        simd = value[0]
+        emask = value[1]
+
+        if int(simd) == 0 and int(emask) == 0:
+            thread_ids_simd.append(f'{tid}')
+            continue
+
+        simd_ulimit = int(simd) - 1
+        emask_hex = int(emask, base=16)
+        lanes = expand_simd_spec_mi(simd_ulimit, emask_hex)
+
+        for lane in lanes:
+            thread_ids_simd.append(f"{tid}:{lane}")
+
+    return thread_ids_simd
 
 def clean_cpp_template_brackets_and_call_signature(string):
     """
@@ -151,14 +211,22 @@ class OneAPIGdbDriver(GdbDriver):
         information on number of active SIMD lanes along with stack
         trace information.
         """
-        logging.info('gdb-oneapi: info threads')
+        cmd = "-thread-info --stopped"
+        logging.info('gdb-oneapi: interpreter-exec mi %s' % cmd)
         tids = []
-        lines = self.communicate("info threads")
+        lines = self.communicate('interpreter-exec mi "%s"' % cmd)
         logging.debug('%s', repr(lines))
-        for line in lines:
-            if "inactive" in line:
-                continue
-            tids += parse_thread_info_line(line, self.parse_simd_lanes)
+
+        if not lines:
+            return []
+
+        mi_cmd_response = gdbmiparser.parse_response(lines[0])
+
+        if mi_cmd_response is not None:
+            if mi_cmd_response['message'] == 'error':
+                logging.error('Failed to execute the command: "%s"' % cmd)
+                return []
+            tids = parse_thread_info_mi(mi_cmd_response['payload'], self.parse_simd_lanes)
         return tids
 
     def bt(self, thread_id):
