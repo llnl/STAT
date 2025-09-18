@@ -64,4 +64,4 @@ if test -n "$PYTHONPATH" ; then
 else
     export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
 fi
-exec @STATPYTHON@ @pythondir@/STATmain.py bench $@
+exec @STATPYTHON@ -s @pythondir@/STATmain.py bench $@

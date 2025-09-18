@@ -62,30 +62,33 @@ void do_Receive(int from, int tag, int* buf, MPI_Request* req)
 #define N (32*10)
 #define THREADS_PER_BLOCK 32
 
-__device__ void foo()
+__device__ void foo(char *a, int *b)
 {
    int i, x, y;
 #ifdef CRASH
    assert(0);
 #endif
 #ifdef NOHANG
-   for (i = 0; i <= 1000000; i++)
+   for (i = 0; i <= 100000000; i++)
 #else
    for (i = 0; i >= 0; i++)
 #endif
    {
+	a[threadIdx.x] += b[threadIdx.x];
     x = i;
     y = x + 1;
    }
+	a[threadIdx.x] += b[threadIdx.x];
+
 }
 
-__device__ void bar()
+__device__ void bar(char *a, int *b)
 {
-    foo();
+    foo(a, b);
 }
 
 __global__
-void add(int *a, int *b)
+void add(int *a, int *b, char *c, int *d)
 {
     int i = threadIdx.x + blockIdx.x * blockDim.x, *z;
     if (i<N)
@@ -97,9 +100,9 @@ void add(int *a, int *b)
 #endif
     }
     if (threadIdx.x % 32 == 0)
-        bar();
+        bar(c, d);
     else
-        bar();
+        bar(c, d);
 #ifdef CRASH
     free(z);
     free(z);
@@ -109,18 +112,35 @@ void add(int *a, int *b)
 }
 
 __global__
-void add2(int *a, int *b)
+void add2(int *a, int *b, char *c, int *d)
 {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     if (i<N)
         b[i] = 2*a[i];
-    bar();
+    bar(c, d);
+}
+
+__global__
+void hello(char *a, int *b)
+{
+	a[threadIdx.x] += b[threadIdx.x];
 }
 
 int main(int argc, char **argv)
 {
     int ha[N], hb[N], hc[N];
     gethostname(hostname, 256);
+    	char a[N] = "Hello \0\0\0\0\0\0";
+	int b[N] = {15, 10, 6, 0, -11, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+const int blocksize = 16;
+
+	char *ad;
+	int *bd;
+	const int csize = N*sizeof(char);
+	const int isize = N*sizeof(int);
+	printf("%s", a);
+
+
 #ifdef USEMPI
     int next, prev, buf[2], tag=2;
     MPI_Request reqs[2];
@@ -134,6 +154,14 @@ int main(int argc, char **argv)
     printf("Hello serial world from %s\n", hostname);
 #endif
     fflush(stdout);
+
+    	cudaMalloc( (void**)&ad, csize );
+	cudaMalloc( (void**)&bd, isize );
+	cudaMemcpy( ad, a, csize, cudaMemcpyHostToDevice );
+	cudaMemcpy( bd, b, isize, cudaMemcpyHostToDevice );
+	
+	dim3 dimBlock( blocksize, 1 );
+	dim3 dimGrid( 1, 1 );
     int *da, *db;
     cudaMalloc((void **)&da, N*sizeof(int));
     cudaMalloc((void **)&db, N*sizeof(int));
@@ -154,9 +182,18 @@ int main(int argc, char **argv)
         free(0);
     }
 #endif
-    add<<<N/THREADS_PER_BLOCK, THREADS_PER_BLOCK>>>(da, db);
-    add2<<<N/THREADS_PER_BLOCK, THREADS_PER_BLOCK>>>(dc, dd);
-
+    printf("sleeping\n");
+    for (int ii=0;ii<99999999;ii++)
+    for (int jj=0;jj<99999999;jj++)
+    	hello<<<dimGrid, dimBlock>>>(ad, bd);
+	cudaMemcpy( a, ad, csize, cudaMemcpyDeviceToHost );
+    add<<<N/THREADS_PER_BLOCK, THREADS_PER_BLOCK>>>(da, db, ad, bd);
+    add2<<<N/THREADS_PER_BLOCK, THREADS_PER_BLOCK>>>(dc, dd, ad, bd);
+    printf("sleeping done\n");
+	cudaMemcpy( a, ad, csize, cudaMemcpyDeviceToHost );
+	printf("%s\n", a);
+	cudaFree( ad );
+	cudaFree( bd );
 #ifdef USEMPI
 
     if (argc > 1)

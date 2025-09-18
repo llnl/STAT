@@ -81,4 +81,8 @@ else
     export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
 fi
 
-exec @STATPYTHON@ @pythondir@/STATmain.py gui $@
+if test -n @GSETTINGS_SCHEMA_DIR@ ; then
+    export GSETTINGS_SCHEMA_DIR=@GSETTINGS_SCHEMA_DIR@
+fi
+
+exec @STATPYTHON@ -s @pythondir@/STATmain.py gui $@

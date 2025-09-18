@@ -61,4 +61,4 @@ fi
 export PATH=$PATH:@DOTBINDIR@
 export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
 
-exec @STATPYTHON@ $@
+exec @STATPYTHON@ -s $@
