@@ -1,4 +1,16 @@
 <section>
+  <title>stat version 4.2.2</title>
+  <para>
+    <itemizedlist>
+      <listitem><para>
+        invoke python with -s to prevent user site-packages from interferring
+        allow specification of GSETTINGS_SCHEMA_DIR for GUI
+      </para></listitem>
+    </itemizedlist>
+  </para>
+</section>
+
+<section>
   <title>stat version 4.2.1</title>
   <para>
     <itemizedlist>
