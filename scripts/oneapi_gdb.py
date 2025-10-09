@@ -96,10 +96,6 @@ class OneAPIGdbDriver(GdbDriver):
     """ A class to drive Intel(R) Distribution for GDB* """
 
     gdb_command = 'gdb-oneapi'
-    parse_simd_lanes = False
-    if 'STAT_COLLECT_SIMD_BT' in os.environ and \
-        os.environ['STAT_COLLECT_SIMD_BT'] == "1":
-        parse_simd_lanes = True
 
     def get_thread_list(self):
         """

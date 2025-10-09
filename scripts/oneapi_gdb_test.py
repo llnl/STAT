@@ -46,7 +46,6 @@ class TestGDBParsing(unittest.TestCase):
         Tests class static variables
         """
         self.assertEqual(OneAPIGdbDriver.gdb_command, "gdb-oneapi")
-        self.assertFalse(OneAPIGdbDriver.parse_simd_lanes)
 
     def test_info_threads(self):
         """
