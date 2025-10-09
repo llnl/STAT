@@ -31,107 +31,6 @@ import os
 import logging
 import re
 from gdb import GdbDriver, check_lines
-from pygdbmi import gdbmiparser
-
-def expand_simd_spec_mi(simd_width, emask):
-    """
-    Converts a simd_width and exection_mask input to list
-    of lanes.
-    """
-
-    lane = 0
-    lanes = []
-    while emask != 0:
-        if (emask & 0x1) != 0:
-            lanes.append(lane)
-
-        lane += 1
-        emask >>= 1
-
-    return lanes
-
-def is_gpu_thread_found(name):
-    """
-    Returns 'True' if the Thread name contains 'ZE' character.
-    """
-    return any([x in name for x in ('ZE')])
-
-def is_cpu_thread_found(name):
-    """
-    Returns 'True' if Thread name contains any of the matching
-    characters 'LWP', 'Thread'.
-    """
-    return any([x in name for x in ('LWP', 'Thread')])
-
-def parse_thread_info_mi(mi_rsp, parse_simd_lanes = False):
-    """
-    The function takes the MI command response in Python dictionary
-    object as an input and returns the list of thread ids. The SIMD
-    lane information is also added if the optional 'parse_simd_lanes'
-    argument is true.
-    """
-
-    key, value = list(mi_rsp.items())[0]
-    if key != "threads":
-        logging.info('GDB MI response does not has any thread info')
-        return []
-
-    thread_ids_gpu = [thread['name'].split(" ")[0].replace('"', "")
-        for thread in value if ('name' in thread
-                                and is_gpu_thread_found(thread['name'])
-                                and 'state' in thread
-                                and "unavailable" not in thread['state'])]
-    thread_ids_cpu = [str(thread['id']) for thread in value
-        if ('name' in thread and not is_gpu_thread_found(thread['name'])
-            and is_cpu_thread_found(thread['target-id'])
-            and 'state' in thread and "unavailable" not in thread['state'])]
-    thread_ids = thread_ids_cpu + thread_ids_gpu
-    if not parse_simd_lanes:
-        return thread_ids
-
-    simd_widths = dict()
-    simd_found = False
-
-    for tid in thread_ids:
-        simd = [thread['simd-width'] for thread in value
-                if ('simd-width' in thread
-                    and tid == thread['name'].split(" ")[0].replace('"', ""))]
-        emask = [thread['execution-mask'] for thread in value
-                 if ('execution-mask' in thread
-                     and tid == thread['name'].split(" ")[0].replace('"', ""))]
-
-        simd_widths[tid] = []
-        if simd and emask:
-            simd_widths[tid].append(str(simd[0]).replace('"',''))
-            simd_widths[tid].append(str(emask[0]).replace('"', ''))
-            simd_found = True
-        else:
-            simd_widths[tid].append("0")
-            simd_widths[tid].append("0")
-
-    if not simd_found:
-        return thread_ids
-
-    thread_ids_simd = []
-    for tid, value in simd_widths.items():
-        if not value:
-            continue
-
-        simd = value[0]
-        emask = value[1]
-
-        if int(simd) == 0 and int(emask) == 0:
-            thread_ids_simd.append(f'{tid}')
-            continue
-
-        simd_ulimit = int(simd) - 1
-        emask_hex = int(emask, base=16)
-        lanes = expand_simd_spec_mi(simd_ulimit, emask_hex)
-
-        for lane in lanes:
-            thread_ids_simd.append(f"{tid}:{lane}")
-
-    return thread_ids_simd
 
 def clean_cpp_template_brackets_and_call_signature(string):
     """
@@ -205,28 +104,22 @@ class OneAPIGdbDriver(GdbDriver):
     def get_thread_list(self):
         """
         Gets the list of threads in the target process. For
-        Intel(R) Distribution for GDB* this function extracts SIMD
-        lane information as part of a thread ID.
-        It is to improve the resulting representation by adding the
-        information on number of active SIMD lanes along with stack
-        trace information.
+        Intel(R) Distribution for GDB* this function extracts active
+        threads ID list.
         """
-        cmd = "-thread-info --stopped"
-        logging.info('gdb-oneapi: interpreter-exec mi %s' % cmd)
-        tids = []
-        lines = self.communicate('interpreter-exec mi "%s"' % cmd)
-        logging.debug('%s', repr(lines))
+        cmd = (
+            'thread apply all -q -c printf "%d.%d\\n", '
+            '$_inferior, $_thread'
+        )
 
-        if not lines:
+        logging.info(f'gdb-oneapi: {cmd}')
+
+        tids = self.communicate(cmd)
+        if not tids:
             return []
 
-        mi_cmd_response = gdbmiparser.parse_response(lines[0])
+        logging.debug(f'{tids}')
 
-        if mi_cmd_response is not None:
-            if mi_cmd_response['message'] == 'error':
-                logging.error('Failed to execute the command: "%s"' % cmd)
-                return []
-            tids = parse_thread_info_mi(mi_cmd_response['payload'], self.parse_simd_lanes)
         return tids
 
     def bt(self, thread_id):
