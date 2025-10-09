@@ -127,16 +127,17 @@ class OneAPIGdbDriver(GdbDriver):
         Gets a backtrace from the requested thread id.
         returns list of frames, where each frame is a map of attributes.
         """
-        logging.info('GDB thread bt ID %s' %(thread_id))
+        logging.info(f'GDB thread bt ID {thread_id}')
         ret = []
 
-        lines = self.communicate("thread apply %s bt" %thread_id)
+        wpfa = "with print frame-arguments none --"
+        lines = self.communicate(f"{wpfa} thread apply {thread_id} bt")
 
         lines = lines[2:]
         for line_num, line in enumerate(lines):
             if line[0] != '#':
                 continue
-            logging.debug('Parsing line #%d: %d', line_num, line)
+            logging.debug(f'Parsing line #{line_num}: {line}')
             ret.append(parse_frameinfo_from_backtrace(line))
         return ret
 
