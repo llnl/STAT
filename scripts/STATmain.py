@@ -99,6 +99,7 @@ if __name__ == '__main__':
         gui_parser.add_argument("-y", "--pythontrace", help="gather Python script level stack traces", action="store_true")
         gui_parser.add_argument("-U", "--countrep", help="only gather count and a single representative", action="store_true")
         gui_parser.add_argument("-d", "--debugdaemons", help="launch the daemons under the debugger", action="store_true")
+        gui_parser.add_argument("-j", "--jobid", help="append specified job ID to output directory name")
         gui_parser.add_argument("-L", "--logdir", help="logging output directory")
         gui_parser.add_argument("-l", "--log", help="enable debug logging", choices=['FE', 'BE', 'CP'], action="append")
         if HAVE_GDB_SUPPORT:
