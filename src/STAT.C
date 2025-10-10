@@ -640,7 +640,12 @@ StatError_t parseArgs(StatArgs_t *statArgs, STAT_FrontEnd *statFrontEnd, int arg
             statFrontEnd->setProcsPerNode(atoi(optarg));
             break;
         case 'j':
-            statFrontEnd->setJobId(atoi(optarg));
+            statError = statFrontEnd->setJobId(optarg);
+            if (statError != STAT_OK)
+            {
+                statFrontEnd->printMsg(statError, __FILE__, __LINE__, "Failed to set job ID\n");
+                return statError;
+            }
             break;
         case 'r':
             statArgs->nRetries = atoi(optarg);

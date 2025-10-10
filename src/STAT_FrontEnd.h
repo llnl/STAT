@@ -468,13 +468,13 @@ class STAT_FrontEnd
             directory. This is helpful for example to associate a STAT run with
             a particular batch job ID.
         */
-        void setJobId(unsigned int jobId);
+        StatError_t setJobId(const char *jobId);
 
         //! Gets the job ID
         /*!
             \return the job ID
         */
-        unsigned int getJobId();
+        const char *getJobId();
 
         //! Set the number of daemons per node
         /*!
@@ -946,7 +946,6 @@ class STAT_FrontEnd
         unsigned int topologySize_;                         /*!< the size of the MRNet topology */
         unsigned int logging_;                              /*!< the logging level */
         unsigned int nDaemonsPerNode_;                      /*!< the number of daemons per node */
-        int jobId_;                                         /*!< the batch job ID */
         int mrnetOutputLevel_;                              /*!< the MRNet output level */
         char **launcherArgv_;                               /*!< the job launch arguments */
         char *toolDaemonExe_;                               /*!< the path to the STATD daemon executable */
@@ -954,6 +953,7 @@ class STAT_FrontEnd
         char *filterPath_;                                  /*!< the path to the STAT_FilterDefinitions.so filter file */
         char *remoteNode_;                                  /*!< the hostname of the remote node running the job launcher */
         char *nodeListFile_;                                /*!< the file to containing the nodelist */
+        char *jobId_;                                       /*!< the batch job ID */
         char lastDotFileName_[BUFSIZE];                     /*!< the path to the last generated .dot file */
         char outDir_[BUFSIZE];                              /*!< the output directory */
         char logOutDir_[BUFSIZE];                           /*!< the directory for log files */
