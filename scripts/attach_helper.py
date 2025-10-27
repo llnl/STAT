@@ -44,7 +44,7 @@ def jobid_to_hostname_pid(rm, jobid, remoteshell):
     rm = rm.lower()
     if rm == 'slurm':
         proc = subprocess.Popen(["squeue", "-j", jobid, "-tr", "-o", '%B"'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        ret = proc.stdout.read()
+        ret = proc.stdout.read().decode().replace('"', '')
         lines = ret.splitlines()
         if not lines or lines[0].find("EXEC_HOST") != 0 or len(lines) < 2:
             return None, None, []
@@ -53,7 +53,7 @@ def jobid_to_hostname_pid(rm, jobid, remoteshell):
         remotehosts = [lines[1]]
     if rm == 'lsf':
         proc = subprocess.Popen(["bjobs", "-noheader", "-X", "-o", "exec_host", jobid], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        ret = proc.stdout.read()
+        ret = proc.stdout.read().decode().replace('"', '')
         lines = ret.splitlines()
         if not lines or lines[0].find("not found") != -1 or lines[0].find("-") != -1:
             return None, None, []
@@ -61,7 +61,7 @@ def jobid_to_hostname_pid(rm, jobid, remoteshell):
         remotehosts = [tokens[1][:tokens[1].find(':')], tokens[2][:tokens[1].find(':')]]
     if rm == 'alps':
         proc = subprocess.Popen(["qstat", "-f", jobid], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        ret = proc.stdout.read()
+        ret = proc.stdout.read().decode().replace('"', '')
         lines = ret.splitlines()
         for line in lines:
             if line.find("login_node_id") != -1:
@@ -74,7 +74,7 @@ def jobid_to_hostname_pid(rm, jobid, remoteshell):
                 domain_name =  socket.getfqdn().strip(socket.gethostname())
                 remotehost = remotehost[:remotehost.find('.localdomain')]
             proc = subprocess.Popen([remoteshell, remotehost, "ps", "x"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            ret = proc.stdout.read()
+            ret = proc.stdout.read().decode()
             if lines == []:
                 continue
             lines = ret.splitlines()
