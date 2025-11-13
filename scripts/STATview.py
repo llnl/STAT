@@ -1990,8 +1990,11 @@ class STATGraph(xdot_ui_elements.Graph):
     #  \param translate_module_offset - [optional] whether to translate module offset traces to source + line, defaults to False
     #
     #  \n
-    def save_dot(self, filename, full_edge_label=True, full_node_label=True, translate_module_offset=False):
+    def save_dot(self, filename, full_edge_label=True, full_node_label=True, translate_module_offset=False, invert=False):
         """Save the current graph as a dot file."""
+        invert_color = False
+        if not invert is False:
+            invert_color = invert.attrs["fillcolor"]
         try:
             f2 = open("test.perf-folded", "w")
             with open(filename, 'w') as f:
@@ -2004,6 +2007,11 @@ class STATGraph(xdot_ui_elements.Graph):
                     for shape in node.shapes:
                         if isinstance(shape, xdot_ui_elements.TextShape):
                             font_color = shape.pen.color
+                            if invert_color is not False and node.attrs['fillcolor'] == invert_color:
+                                if node.attrs['fontcolor'] == '#000000':
+                                    node.attrs['fontcolor'] = '#FFFFFF'
+                                elif node.attrs['fontcolor'] == '#FFFFFF':
+                                    node.attrs['fontcolor'] = '#000000'
                             node_text = shape.t
                         else:
                             fill_color = shape.pen.fillcolor
@@ -3788,7 +3796,7 @@ entered as a regular expression"""
         else:
             self.chooser.destroy()
 
-    def on_reset_layout(self):
+    def on_reset_layout(self, invert=False):
         temp_dot_filename = 'redraw.dot'
         try:
             temp_dot_file = open(temp_dot_filename, 'w')
@@ -3801,7 +3809,7 @@ entered as a regular expression"""
                 show_error_dialog('Failed to open temp dot file %s for writing' % temp_dot_filename, exception=e)
                 return False
         temp_dot_file.close()
-        self.get_current_graph().save_dot(temp_dot_filename)
+        self.get_current_graph().save_dot(temp_dot_filename, invert=invert)
         page = self.notebook.get_current_page()
         self.create_new_tab(page + 1)
         self.notebook.set_current_page(page + 1)
@@ -4498,7 +4506,7 @@ enterered as a regular expression.
         label = label.replace('\\n', '\n').replace('\\<', '<').replace('\\>', '>')
         if node.hide is True:
             return True
-        options = ['Join Equivalence Class', 'Collapse', 'Collapse Depth', 'Hide', 'Expand', 'Expand All', 'Focus', 'View Source', 'Translate']
+        options = ['Join Equivalence Class', 'Collapse', 'Collapse Depth', 'Hide', 'Expand', 'Expand All', 'Focus', 'View Source', 'Translate', 'Invert EQ Font']
 
         if HAVE_TOMOD is True:
             options.append('Temporally Order Children')
@@ -4623,7 +4631,7 @@ enterered as a regular expression.
             box2 = gtk.HButtonBox()
             for option in options:
                 button = gtk.Button(option.replace(' ', '\n'))
-                if option != 'View Source' and option != 'Get Full Edge Label' and option != 'Translate':
+                if option != 'View Source' and option != 'Get Full Edge Label' and option != 'Translate' and option != 'Invert EQ Font':
                     button.connect("clicked", self.manipulate_cb, option, node)
                 if option == 'View Source':
                     if not label_has_source(node.attrs["label"]):
@@ -4642,6 +4650,8 @@ enterered as a regular expression.
                         button.set_sensitive(False)
                 elif option == 'Get Full Edge Label':
                     button.connect("clicked", lambda x, w, l, n: self.get_full_edge_label(w, l, n), widget, button_clicked, node)
+                elif option == 'Invert EQ Font':
+                    button.connect("clicked", lambda x:self.on_reset_layout(invert=node))
                 box2.pack_start(button, False, True, 5)
             button = gtk.Button(stock=gtk.STOCK_OK)
             button.connect("clicked", lambda w, d: self.my_dialog.destroy(), "ok")
@@ -4653,7 +4663,7 @@ enterered as a regular expression.
             for option in options:
                 menu_item = gtk.MenuItem(option)
                 menu.append(menu_item)
-                if option != 'View Source' and option != 'Get Full Edge Label' and option != 'Translate':
+                if option != 'View Source' and option != 'Get Full Edge Label' and option != 'Translate' and option != 'Invert EQ Font':
                     menu_item.connect('activate', self.manipulate_cb, option, node)
                 if option == 'View Source':
                     if label_has_source(node.attrs["label"]):
@@ -4686,6 +4696,8 @@ enterered as a regular expression.
                 elif option == 'Join Equivalence Class':
                     if not node.can_join_eq_c():
                         menu_item.set_sensitive(False)
+                elif option == 'Invert EQ Font':
+                    menu_item.connect("activate", lambda x:self.on_reset_layout(invert=node))
                 menu_item.show()
             try:
                 menu.popup(None, None, None, None, event.button, event.time)
@@ -4760,9 +4772,11 @@ enterered as a regular expression.
             ret = self.get_current_graph().view_source(node)
         elif data == 'Temporally Order Children':
             ret = stat_wait_dialog.show_wait_dialog_and_run(self.get_current_graph().get_children_temporal_order, (node,), [], self)
+        elif data == 'View Source':
+            ret = self.get_current_graph().save_dot(invert=node)
 
         # post process
-        if data not in ['View Source', 'Join Equivalence Class']:
+        if data not in ['View Source', 'Join Equivalence Class', 'Invert EQ Font']:
             if ret is True:
                 self.get_current_graph().action_history.append('%s: %s' % (data, node.attrs["label"]))
                 self.update_history()
