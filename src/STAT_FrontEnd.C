@@ -226,7 +226,7 @@ STAT_FrontEnd::STAT_FrontEnd()
 #ifdef STAT_PROCS_PER_NODE
     procsPerNode_ = STAT_PROCS_PER_NODE;
 #else
-    procsPerNode_ = 1;
+    procsPerNode_ = 64;
 #endif
     envValue = getenv("STAT_PROCS_PER_NODE");
     if (envValue != NULL)
