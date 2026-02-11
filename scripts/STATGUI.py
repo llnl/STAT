@@ -135,7 +135,7 @@ if has_gtk == False:
         from gi.repository import GdkPixbuf
         gtk.POLICY_AUTOMATIC = gtk.PolicyType.AUTOMATIC
         gtk.POLICY_NEVER = gtk.PolicyType.NEVER
-        gtk.Orientation.VERTICAL = gtk.Orientation.VERTICAL
+        #gtk.Orientation.VERTICAL = gtk.Orientation.VERTICAL
         gtk.POS_TOP = gtk.PositionType.TOP
         gtk.gdk = gdk
         gtk.ORIENTATION_VERTICAL = gtk.Orientation.VERTICAL
