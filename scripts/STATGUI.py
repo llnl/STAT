@@ -27,13 +27,17 @@ __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revis
 
 import STAThelper
 from STAThelper import var_spec_to_string, get_task_list, get_proctab, HAVE_PYGMENTS, exec_and_exit
+HAVE_PANGO = True
 if HAVE_PYGMENTS:
     import pygments
-    import pango
     from pygments.lexers import CLexer
     from pygments.lexers import CppLexer
     from pygments.lexers import FortranLexer
     from STAThelper import STATviewFormatter
+    try:
+        import pango
+    except:
+        HAVE_PANGO = False
 import STATview
 from STATview import STATDotWindow, stat_wait_dialog, show_error_dialog, search_paths, STAT_LOGO, run_gtk_main_loop
 
@@ -111,7 +115,6 @@ import_error = ''
 try:
     import gtk
     import gobject
-    import pango
     gtk_wrap_new_with_label_from_widget = gtk.RadioButton
     gtk_wrap_new_from_widget = gtk.RadioButton
     has_gtk = True
@@ -1946,9 +1949,14 @@ host[1-10,12,15-20];otherhost[30]
             if HAVE_PYGMENTS:
                 text_view_buffer.create_tag("monospace", family="monospace")
                 pygments.highlight(dysect_session_file.read(), CppLexer(), STATviewFormatter())
-                text_view_buffer.create_tag('bold_tag', weight=pango.WEIGHT_BOLD)
-                text_view_buffer.create_tag('italics_tag', style=pango.STYLE_ITALIC)
-                text_view_buffer.create_tag('underline_tag', underline=pango.UNDERLINE_SINGLE)
+                if HAVE_PANGO:
+                    text_view_buffer.create_tag('bold_tag', weight=pango.WEIGHT_BOLD)
+                    text_view_buffer.create_tag('italics_tag', style=pango.STYLE_ITALIC)
+                    text_view_buffer.create_tag('underline_tag', underline=pango.UNDERLINE_SINGLE)
+                else:
+                    text_view_buffer.create_tag('bold_tag')
+                    text_view_buffer.create_tag('italics_tag')
+                    text_view_buffer.create_tag('underline_tag')
                 lines = STAThelper.pygments_lines
                 iterator = text_view_buffer.get_iter_at_offset(0)
                 width = len(str(len(lines)))

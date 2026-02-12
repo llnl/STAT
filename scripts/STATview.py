@@ -76,7 +76,6 @@ import_error = ''
 try:
     import gtk
     import gobject
-    import pango
     gtk_wrap_new_with_label_from_widget = gtk.RadioButton
     gtk_wrap_new_from_widget = gtk.RadioButton
     has_gtk = True
@@ -89,7 +88,6 @@ except RuntimeError as e:
 except Exception as e:
     import_error = e
     pass #raise Exception('%s\nThere was a problem loading the gtk module.\n' % repr(e))
-
 if has_gtk == False:
     try:
         import gi
@@ -137,6 +135,10 @@ if HAVE_PYGMENTS:
     from pygments.lexers import CppLexer
     from pygments.lexers import FortranLexer
     from STAThelper import STATviewFormatter
+    try:
+        import pango
+    except:
+        HAVE_PANGO = False
 # Check for optional modules
 ## A variable to determine whether we have the temporal ordering module
 HAVE_TOMOD = True
@@ -1478,9 +1480,14 @@ class STATGraph(xdot_ui_elements.Graph):
                     else:  # default to C
                         pygments.highlight(file.read(), CLexer(), STATviewFormatter())
                     lines = STAThelper.pygments_lines
-                    source_view.get_buffer().create_tag('bold_tag', weight=pango.WEIGHT_BOLD)
-                    source_view.get_buffer().create_tag('italics_tag', style=pango.STYLE_ITALIC)
-                    source_view.get_buffer().create_tag('underline_tag', underline=pango.UNDERLINE_SINGLE)
+                    if HAVE_PANGO:
+                        source_view.get_buffer().create_tag('bold_tag', weight=pango.WEIGHT_BOLD)
+                        source_view.get_buffer().create_tag('italics_tag', style=pango.STYLE_ITALIC)
+                        source_view.get_buffer().create_tag('underline_tag', underline=pango.UNDERLINE_SINGLE)
+                    else:
+                        source_view.get_buffer().create_tag('bold_tag')
+                        source_view.get_buffer().create_tag('italics_tag')
+                        source_view.get_buffer().create_tag('underline_tag')
                 else:
                     lines = file.readlines()
         except IOError as e:
