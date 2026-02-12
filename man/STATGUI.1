@@ -44,7 +44,7 @@ Gather and merge a single stack trace from each task in your parallel applicatio
 \fBSample Multiple\fR
 Gather and merge multiple stack traces from each task in your parallel application over time. The application is left in a stopped state after sampling.
 .PP
-stat-gui can also serve as an interface to attach a full-featured debugger such as TotalView or DDT to a subset of application tasks. This interface can be accessed through the "identify equivalence classes" \fBEq C\fR button, which will pop up the equivalence classes window . You can then select a single representative, all, or none of an equivalence classes' tasks to form a subset of tasks. The \fBAttach to Subset\fR buttons will launch the specified debugger and attach to the subset of tasks (note, this detaches STAT from the application). The \fBDebugger Options\fR button allows you to modify the debugger path.
+stat-gui can also serve as an interface to attach a full-featured debugger such as TotalView or DDT to a subset of application tasks. This interface can be accessed through the "identify equivalence classes" \fBEq C\fR button, which will pop up the equivalence classes window . You can then select a single representative, all, or none of an equivalence classes' tasks to form a subset of tasks. The \fBAttach to Subset\fR buttons will launch the specified debugger and attach to the subset of tasks (note, this detaches STAT from the application). There are two DDT subset-attach buttons. The preferred DDT method is to use \fBDDT bulk attach\fR which is more scalable than the \fBDDT host:PID attach\fR\&. If the bulk attach fails, then users may fall back to the host:PID attach. The \fBDebugger Options\fR button allows you to modify the debugger path.
 .PP
 .SH "OPTIONS"
 .TP
@@ -104,7 +104,7 @@ When using cuda-gdb as the BE, gather less comprehensive, but faster cuda traces
 <lee218@llnl.gov>
 .SH "COPYRIGHT"
 .PP
-Copyright 2007-2018 Lawrence Livermore National Laboratory
+Copyright 2007-2020 Lawrence Livermore National Laboratory
 .PP
 This is free software; see the source for copying conditions. There is NO warranty; not even for MECHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 .SH "SEE ALSO"

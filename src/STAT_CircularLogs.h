@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2007-2018, Lawrence Livermore National Security, LLC.
+Copyright (c) 2007-2020, Lawrence Livermore National Security, LLC.
 Produced at the Lawrence Livermore National Laboratory
 Written by Gregory Lee [lee218@llnl.gov], Dorian Arnold, Matthew LeGendre, Dong Ahn, Bronis de Supinski, Barton Miller, Martin Schulz, Niklas Nielson, Nicklas Bo Jensen, Jesper Nielson, and Sven Karlsson.
 LLNL-CODE-750488.

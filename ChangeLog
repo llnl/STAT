@@ -1,3 +1,49 @@
+2022-09-16 Gregory L. Lee <lee218@llnl.gov>
+	* : Add check for local_var.h (removed in dyninst 12)
+	can copy local_var.h from older dyninst if needed (python debugging)
+
+2022-08-22 Gregory L. Lee <lee218@llnl.gov>
+	* : updated version string to 4.2.0
+
+2021-03-05 Gregory L. Lee <lee218@llnl.gov>
+	* : updated version string to 4.0.3
+
+2021-03-04 Gregory L. Lee <lee218@llnl.gov>
+	* : added initial rocgdb support for AMD GPUs
+	* STATGUI.py : use ssh for remote shell by default
+
+2020-09-09 Gregory L. Lee <lee218@llnl.gov>
+	scripts/STATmain.py : modified import order to fix Spack installed STAT
+	seg faulting due to wrong libgpg-error being loaded
+
+2020-09-08 Gregory L. Lee <lee218@llnl.gov>
+	* : updated version string to 4.0.3
+
+2020-08-28 Gregory L. Lee <lee218@llnl.gov>
+	STAT_BackEnd.[C,h] : Add Dyninst 10.2 support, remove Dyninst < 10 support
+	config/x_ac_boost.m4 : remove dependence on -mt version of boost libs
+
+2020-02-28 Gregory L. Lee <lee218@llnl.gov>
+	* : tag version 4.0.2
+
+2018-12-26 Gregory L. Lee <lee218@llnl.gov>
+	* STATview.py : Added ability to generate folded trace file for flamegraph
+
+2018-11-20 Gregory L. Lee <lee218@llnl.gov>
+	* : Added dyninst 10.0 support
+
+2018-10-17 Gregory L. Lee <lee218@llnl.gov>
+	* STATview.py : Handle .dot file lines longer than 16K
+
+2018-09-28 Gregory L. Lee <lee218@llnl.gov>
+	* : Python 3 and xdot 0.9 support added
+
+2018-08-07 Gregory L. Lee <lee218@llnl.gov>
+	* : Fixed core file merging
+
+2018-05-15 Gregory L. Lee <lee218@llnl.gov>
+	* STATview.py : use lru_cache for translating edge labels
+
 2018-05-01 Gregory L. Lee <lee218@llnl.gov>
 	* : tag version 4.0
 

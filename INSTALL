@@ -28,10 +28,14 @@ Dependent Packages
 
    In addition, STAT requires Python and the STAT GUI requires
    PyGTK, both of which are commonly preinstalled with many Linux
-   operating systems. STAT also requires SWIG to generate Python
-   wrappers for STAT's core functionality. The Pygments Python
-   module can optionally be installed to allow the STAT GUI to
-   perform syntax highlighting of source code. Another GUI
+   operating systems. STAT can be built with Python 2.X and PyGTK
+   2.X. However, starting with STAT version 4.0.1, STAT can
+   optionally be built with Python 3.X. The use of Python 3.X also
+   requires PyGTK version 3.X and requires you to manually install
+   the xdot python package. STAT also requires SWIG to generate
+   Python wrappers for STAT's core functionality. The Pygments
+   Python module can optionally be installed to allow the STAT GUI
+   to perform syntax highlighting of source code. Another GUI
    requirement is the Graphviz package to render the DOT format
    graph files.
 
@@ -51,22 +55,33 @@ Installation
 
    STAT and its dependencies can also be built via the Spack
    package management tool, available at
-   https://github.com/LLNL/spack. Running spack install stat
+   https://github.com/spack/spack. Running spack install stat
    should build STAT and all of its dependencies, including those
-   require for the STAT GUI. Note that two Spack variants exist.
+   require for the STAT GUI. Note that three Spack variants exist.
    The first is +examples, to enable building example MPI code
    that STAT can be tested against. This is disabled by default to
    avoid requiring an MPI library, but enabling it will trigger a
    build of MPI. The second is +dysect to enable building of the
-   DySectAPI.
+   DySectAPI. The third is +fgfs to build with
+   FastGlobalFileStatus and target binary broadcast support. FGFS
+   is crucial to scalability, particularly when debugging
+   applications that load several large dynamic libraries.
+
+   For STAT 4.0.1 and beyond, the spack build of STAT requires
+   Python 3 and will require the activation of the py-xdot package
+   ./bin/spack activate py-xdot. For versions up to and including
+   STAT 4.0.0, the spack build of STAT requires Python 2 and
+   requires the activation of the py-pygtk and py-enum34 packages
+   ./bin/spack activate py-pygtk and ./bin/spack activate
+   py-enum34.
 
    When building STAT itself, first run configure. You will need
    to use the --with-package options to specify the install prefix
-   for mrnet, graphlib, launchmon, libdwarf, and stackwalker.
-   These options will add the necessary include and library search
-   paths to the compile options. Refer to configure --help for
-   exact options. You may also wish to specify the maximum number
-   of communication processes to launch per node with the option
+   for mrnet, graphlib, launchmon, libdwarf, and dyninst. These
+   options will add the necessary include and library search paths
+   to the compile options. Refer to configure --help for exact
+   options. You may also wish to specify the maximum number of
+   communication processes to launch per node with the option
    --with-procspernode=number, generally set to the number of
    cores per node.
 
@@ -130,6 +145,16 @@ make install
    to point to the directories containing the dependent libraries.
 
    STAT can also be configured to use GDB as a backend instead of
-   DynInst. To specify the path to gdb, use the --with-gdb flag.
-   Note that STAT currently still requires DynInst as a dependence
-   even when using the GDB backend.
+   Dyninst. To specify the path to gdb, use the --with-gdb flag.
+   If CUDA kernal traces are desired, the path should point to a
+   working cuda-gdb executable. Note that STAT currently still
+   requires Dyninst as a dependence even when using the GDB
+   backend.
+
+   Dyninst 12 removed the local_var.h header file that STAT uses
+   to gather python traces. If this feature is needed, you will
+   either need to use Dyninst version 11 or lower, or copy the
+   local_var.h file from
+   https://raw.githubusercontent.com/dyninst/dyninst/5c7e0ee327399
+   cfae50d77f977ff6655c2ca3ae4/stackwalk/h/local_var.h to your
+   Dyninst 12+ installation's include directory

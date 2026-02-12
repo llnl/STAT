@@ -8,16 +8,24 @@ sudo: required
 
 env:
   matrix:
-    - gcc-4.8
+    - fast_finish: true
+    - gcc
       COVERAGE=On
 
 addons:
   apt:
+    update: true
+    sources:
+      - ubuntu-toolchain-r-test
     packages:
       - cmake
       - cmake-data
       - libelf-dev
+      - pkg-config
       - libdwarf-dev
+      - autoconf
+      - automake
+      - libtool
       - libboost-all-dev
       - swig
       - lcov
@@ -25,6 +33,8 @@ addons:
       - munge
       - gfortran
       - gdb
+      - python3
+      - g++-8
 
 env:
   global:
@@ -32,37 +42,48 @@ env:
     - export LD_LIBRARY_PATH=$HOME/local/lib:$LD_LIBRARY_PATH
 
 before_install:
-  - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-  - sudo apt-get update -qq
-  - sudo apt-get install -qq g++-4.8
-  - export CC="gcc-4.8"
-  - export CXX="g++-4.8"
+  - sudo ln -s /usr/lib/x86_64-linux-gnu/libboost_date_time.so /usr/lib/libboost_date_time-mt.so
+  - sudo ln -s /usr/lib/x86_64-linux-gnu/libboost_thread.so /usr/lib/libboost_thread-mt.so
+  - sudo ln -s /usr/lib/x86_64-linux-gnu/libboost_filesystem.so /usr/lib/libboost_filesystem-mt.so
+  - sudo ln -s /usr/lib/x86_64-linux-gnu/libboost_program_options.so /usr/lib/libboost_program_options-mt.so
+  - sudo ln -s /usr/lib/x86_64-linux-gnu/libboost_regex.so /usr/lib/libboost_regex-mt.so
+  - sudo ln -s /usr/lib/x86_64-linux-gnu/libboost_system.so /usr/lib/libboost_system-mt.so
+  - sudo ln -s /usr/lib/x86_64-linux-gnu/libboost_wave.so /usr/lib/libboost_wave-mt.so
+  - ls -l /usr/lib
+  - which python
   - gem install coveralls-lcov
   - pip install --user cpp-coveralls
   - eval $(./scripts/travis-dep-builder.sh --printenv)
   # travis has a 50 minute timeout for any single command, so we break up the build so it will partially cache as needed. ompi+other can be done in one session, dyninst requires its own.
-  - ./scripts/travis-dep-builder.sh --cachedir=$HOME/local/.cache --components=ompi
+#  - ./scripts/travis-dep-builder.sh --cachedir=$HOME/local/.cache --components=ompi
+#  - rm -rf $HOME/local/.cache
+  - ./scripts/travis-dep-builder.sh --cachedir=$HOME/local/.cache --components=impi
   - ./scripts/travis-dep-builder.sh --cachedir=$HOME/local/.cache --components=other
   - ./scripts/travis-dep-builder.sh --cachedir=$HOME/local/.cache --components=dyninst
 
 script:
-  - export CC=gcc-4.8
-  - export CXX=g++-4.8
+  - source $HOME/local/bin/mpivars.sh
   - ls -l $HOME/local
   - ls -l $HOME/local/lib
   - ls -l $HOME/local/bin
-  - ls -l $HOME/local/etc
-  - cat $HOME/local/etc/rm_openrte.conf
-  - ls -l $HOME/local/include
-  - cd $HOME/build/LLNL/STAT
+  - echo $PATH
   - ./bootstrap
   - export LDFLAGS=-Wl,-no-as-needed
 #  - if test "$COVERAGE" = "On" ; then export CFLAGS="-coverage" ; export CXXFLAGS="-coverage" ; fi
-  - ./configure --prefix=$HOME/stat --with-stackwalker=$HOME/local/dyninst --with-mrnet=$HOME/local --with-graphlib=$HOME/local --with-launchmon=$HOME/local --enable-debug --enable-code-coverage || cat config.log
+  - echo $PATH
+  - ./configure --prefix=$HOME/stat --with-stackwalker=$HOME/local --with-mrnet=$HOME/local --with-graphlib=$HOME/local --with-launchmon=$HOME/local --enable-debug --enable-code-coverage --disable-examples || cat config.log
+  - cat config.log
   - make && make install
+  - mkdir -p $HOME/stat/bin
+  - /usr/bin/mpicc -g examples/src/mpi_ringtopo.c -o $HOME/stat/bin/mpi_ringtopo.out
+  - $HOME/local/bin/mpicc -g examples/src/mpi_ringtopo.c -o $HOME/stat/share/stat/examples/bin/mpi_ringtopo
+  - $HOME/local/bin/mpicc -g examples/src/rank_test.c -o $HOME/stat/share/stat/examples/bin/rank_test
+  - $HOME/local/bin/mpif90 -g examples/src/hw.F -o $HOME/stat/share/stat/examples/bin/hw
 
 after_script:
+  - source $HOME/local/bin/mpivars.sh
   - ls -l $HOME/stat/bin
+  - echo $PATH
   - $HOME/stat/bin/stat-cl -h
   - export STAT_XPLAT_RSH=rsh
   - export XPLAT_RSH=rsh
@@ -76,6 +97,8 @@ after_script:
   - echo -e "Host $HOSTNAME\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
 #  - export MRNET_OUTPUT_LEVEL=5
   - echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
+  - sudo ls -l /proc/sys/kernel/yama/ptrace_scope
+  - sudo cat /proc/sys/kernel/yama/ptrace_scope
   - $HOME/stat/share/stat/examples/bin/rank_test 10 & $HOME/stat/bin/stat-cl -s 2 -l FE -l BE -L $HOME -I $!
   - cat stat_results/output.0000/output.0000.top
   - cat stat_results/output.0000/output.0000.fulltop
@@ -89,9 +112,25 @@ after_script:
   - which mpirun
   - mpirun --version
   - export LMON_FE_ENGINE_TIMEOUT=20
-  - sleep 40
-  - mpirun -n 4 $HOME/stat/share/stat/examples/bin/mpi_ringtopo 40 & $HOME/stat/bin/stat-cl -s 2 -l FE -l BE -L $HOME $!
-  - wait $!
+  - ping -c 1 localhost
+  - rsh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no `hostname` hostname  & export RSHPID=$! ; sleep 5; kill -9 $RSHPID
+  - ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no `hostname` hostname  & export RSHPID=$! ; sleep 5; kill -9 $RSHPID
+  - export MYHN=`hostname`
+  - ping -c 1 $MYHN
+  - rsh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no $MYHN hostname  & export RSHPID=$! ; sleep 5; kill -9 $RSHPID
+  - ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no $MYHN hostname  & export RSHPID=$! ; sleep 5; kill -9 $RSHPID
+  - alias ssh='ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no' 
+  - ssh $MYHN hostname  & export RSHPID=$! ; sleep 5; kill -9 $RSHPID
+  - /home/travis/local/bin/mpiexec.hydra -n 4 $HOME/stat/share/stat/examples/bin/mpi_ringtopo 40 &
+  #- /home/travis/local/bin/mpirun -n 4 $HOME/stat/share/stat/examples/bin/mpi_ringtopo 40 &
+  - export MPIRUNPID=$!
+  - echo $MPIRUNPID
+  - sleep 5
+  - ps xww
+  - MPIRUNPID=`ps xww | grep mpiexec.hydra | head -n 1 | cut -f 1 -d " "`
+  - echo $MPIRUNPID
+  - $HOME/stat/bin/stat-cl -s 2 -l FE -l BE -L $HOME $MPIRUNPID
+  - sleep 45
   - cat stat_results/mpi_ringtopo.0000/mpi_ringtopo.0000.top
   - cat stat_results/mpi_ringtopo.0000/mpi_ringtopo.0000.fulltop
   - cat stat_results/mpi_ringtopo.0000/00_mpi_ringtopo.0000.2D.dot
@@ -99,10 +138,14 @@ after_script:
   - cat stat_results/mpi_ringtopo.0000/02_mpi_ringtopo.0000.2D.dot
   - cat stat_results/mpi_ringtopo.0000/03_mpi_ringtopo.0000.2D.dot
   - cat stat_results/mpi_ringtopo.0000/04_mpi_ringtopo.0000.3D.dot
-  - $HOME/stat/bin/stat-cl -s 5 -l FE -l BE -L $HOME -C $HOME/local/bin/mpirun -n 4 $HOME/stat/share/stat/examples/bin/mpi_ringtopo 40 &
-  - sleep 40
+  - ps xww
+  - $HOME/stat/bin/stat-cl -s 5 -l FE -l BE -L $HOME -C $HOME/local/bin/mpiexec.hydra -n 4 $HOME/stat/share/stat/examples/bin/mpi_ringtopo 40 &
+  - ps xww
+  - sleep 10
+  - ps xww
+  - sleep 41
   - kill -18 $!
-  - ps x | grep mpirun | grep -v grep | cut -f 1 -d " " | xargs kill -18
+  - ps x | grep mpiexec.hydra | grep -v grep | cut -f 1 -d " " | xargs kill -18
   - cat stat_results/mpi_ringtopo.0001/mpi_ringtopo.0001.top
   - cat stat_results/mpi_ringtopo.0001/mpi_ringtopo.0001.fulltop
   - cat stat_results/mpi_ringtopo.0001/00_mpi_ringtopo.0001.2D.dot
@@ -110,9 +153,10 @@ after_script:
   - cat stat_results/mpi_ringtopo.0001/02_mpi_ringtopo.0001.2D.dot
   - cat stat_results/mpi_ringtopo.0001/03_mpi_ringtopo.0001.2D.dot
   - cat stat_results/mpi_ringtopo.0001/04_mpi_ringtopo.0001.3D.dot
-#  The script test currently fails as openmpi does not support reattach when launched under a debugger (https://github.com/open-mpi/ompi/issues/3178)
 #  The script test may also hang with openmpi-2.0.3. This appears to be a race condition when deleting the stat_fe object
-#  - $HOME/stat/bin/stat-script $HOME/stat/share/stat/examples/bin/script_test.py -l $HOME/local/bin/mpirun || echo "failed with $?"
+#  - $HOME/stat/bin/stat-script $HOME/stat/share/stat/examples/bin/script_test.py -l $HOME/local/bin/mpiexec.hydra || echo "failed with $?"
+  - ls -lt stat_results
   - bash <(curl -s https://codecov.io/bash)
   - coveralls --exclude lib --exclude tests -i ./src --gcov-options '\-lp'
   #- if test "$COVERAGE" = "On" ; then bash <(curl -s https://codecov.io/bash) ; fi
+  - echo 'done'

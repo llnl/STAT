@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2007-2018, Lawrence Livermore National Security, LLC.
+Copyright (c) 2007-2020, Lawrence Livermore National Security, LLC.
 Produced at the Lawrence Livermore National Laboratory
 Written by Gregory Lee [lee218@llnl.gov], Dorian Arnold, Matthew LeGendre, Dong Ahn, Bronis de Supinski, Barton Miller, Martin Schulz, Niklas Nielson, Nicklas Bo Jensen, Jesper Nielson, and Sven Karlsson.
 LLNL-CODE-750488.
@@ -537,6 +537,10 @@ static PyObject *py_Output_Graph(PyObject *self, PyObject *args)
     return Py_BuildValue("i", 0);
 }
 
+struct module_state {
+    PyObject *error;
+};
+
 //! The Python method table for this module
 static PyMethodDef _STATmergeMethods[] = {
     {"Init_Graphlib", py_Init_Graphlib, METH_VARARGS, "graphlib init."},
@@ -549,10 +553,68 @@ static PyMethodDef _STATmergeMethods[] = {
     {NULL, NULL, 0, NULL}
 };
 
+#if PY_MAJOR_VERSION >= 3
+#define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
+#else
+#define GETSTATE(m) (&_state)
+static struct module_state _state;
+#endif
+
+#if PY_MAJOR_VERSION >= 3
+static int myextension_traverse(PyObject *m, visitproc visit, void *arg) {
+    Py_VISIT(GETSTATE(m)->error);
+    return 0;
+}
+
+static int myextension_clear(PyObject *m) {
+    Py_CLEAR(GETSTATE(m)->error);
+    return 0;
+}
+
+static struct PyModuleDef moduledef = {
+        PyModuleDef_HEAD_INIT,
+        "_STATmerge",
+        NULL,
+        sizeof(struct module_state),
+        //myextension_methods,
+        _STATmergeMethods,
+        NULL,
+        myextension_traverse,
+        myextension_clear,
+        NULL
+};
+
+#define INITERROR return NULL
+
+PyMODINIT_FUNC
+PyInit__STATmerge(void)
+
+#else
+#define INITERROR return
+
 //! The Python initialization routine for this module
 void init_STATmerge()
+#endif
 {
-    Py_InitModule("_STATmerge", _STATmergeMethods);
+#if PY_MAJOR_VERSION >=3
+    PyObject *module = PyModule_Create(&moduledef);
+#else
+    PyObject *module = Py_InitModule("_STATmerge", _STATmergeMethods);
+#endif
+
+    if (module == NULL)
+        INITERROR;
+    struct module_state *st = GETSTATE(module);
+
+    st->error = PyErr_NewException("myextension.Error", NULL, NULL);
+    if (st->error == NULL) {
+        Py_DECREF(module);
+        INITERROR;
+    }
+
+#if PY_MAJOR_VERSION >= 3
+    return module;
+#endif
 }
 
 }

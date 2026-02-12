@@ -3,7 +3,7 @@
 """@package STATview
 Visualizes dot graphs outputted by STAT."""
 
-__copyright__ = """Copyright (c) 2007-2018, Lawrence Livermore National Security, LLC."""
+__copyright__ = """Copyright (c) 2007-2022, Lawrence Livermore National Security, LLC."""
 __license__ = """Produced at the Lawrence Livermore National Laboratory
 Written by Gregory Lee <lee218@llnl.gov>, Dorian Arnold, Matthew LeGendre, Dong Ahn, Bronis de Supinski, Barton Miller, Martin Schulz, Niklas Nielson, Nicklas Bo Jensen, Jesper Nielson, and Sven Karlsson.
 LLNL-CODE-750488.
@@ -21,8 +21,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 __author__ = ["Gregory Lee <lee218@llnl.gov>", "Dorian Arnold", "Matthew LeGendre", "Dong Ahn", "Bronis de Supinski", "Barton Miller", "Martin Schulz", "Niklas Nielson", "Nicklas Bo Jensen", "Jesper Nielson"]
 __version_major__ = 4
-__version_minor__ = 0
-__version_revision__ = 0
+__version_minor__ = 2
+__version_revision__ = 3
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
 import sys
@@ -33,8 +33,10 @@ import pwd
 try:
     from gdb import GdbDriver
     from cuda_gdb import CudaGdbDriver
+    from roc_gdb import RocGdbDriver
+    from oneapi_gdb import OneAPIGdbDriver
 except Exception as e:
-    print e
+    print(e)
 gdb_instances = {}
 
 def new_gdb_instance(pid, gdb_type='gdb'):
@@ -52,6 +54,10 @@ def new_gdb_instance(pid, gdb_type='gdb'):
     try:
         if 'cuda-gdb' in os.environ['STAT_GDB']:
             gdb = CudaGdbDriver(pid, 'error', 'stderr')
+        elif 'rocgdb' in os.environ['STAT_GDB']:
+            gdb = RocGdbDriver(pid, 'error', 'stderr')
+        elif 'gdb-oneapi' in os.environ['STAT_GDB']:
+            gdb = OneAPIGdbDriver(pid, 'error', 'stderr')
         else:
             gdb = GdbDriver(pid, 'error', 'stderr')
     except:
@@ -125,21 +131,21 @@ if __name__ == "__main__":
         pause(pid)
         device_traces = get_all_device_traces(pid)
     #    devices = gdb_instances[pid].get_cuda_devices()
-    #    print '\ndevices'
+    #    print('\ndevices')
     #    for device in devices:
     #        if gdb_instances[pid].cuda_device_focus(device):
-    #            print 'device focused', device
+    #            print('device focused', device)
     #    kernels = gdb_instances[pid].get_cuda_kernels()
-    #    print '\nkernels'
+    #    print('\nkernels')
     #    for kernel in kernels:
     #        if gdb_instances[pid].cuda_kernel_focus(kernel):
-    #            print 'kernel focused', kernel
+    #            print('kernel focused', kernel)
     #    bt = gdb_instances[pid].cuda_bt()
     #    for frame in bt:
-    #        print frame
-    #    print
+    #        print(frame)
+    #    print()
     #    gdb_instances[pid].kill()
     for pid in pids:
         pid = int(pid)
-        print '\ndetaching %d' %(pid)
+        print('\ndetaching %d' %(pid))
         detach(pid)

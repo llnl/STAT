@@ -25,19 +25,19 @@
 </refnamediv>
 <refsynopsisdiv>
     <cmdsynopsis>
-    <command>stat-cl</command> <arg><replaceable class="option">OPTIONS</replaceable></arg> <arg choice="plain"><replaceable class="parameter">PID</replaceable></arg> 
+    <command>stat-cl</command> <arg><replaceable class="option">OPTIONS</replaceable></arg> <arg choice="plain"><replaceable class="parameter">PID</replaceable></arg>
     </cmdsynopsis>
     <cmdsynopsis>
-    <command>stat-cl</command> <arg><replaceable class="option">OPTIONS</replaceable></arg><arg choice="plain">-C</arg> <arg choice="plain" rep="repeat"><replaceable class="parameter">COMMAND</replaceable></arg> 
+    <command>stat-cl</command> <arg><replaceable class="option">OPTIONS</replaceable></arg><arg choice="plain">-C</arg> <arg choice="plain" rep="repeat"><replaceable class="parameter">COMMAND</replaceable></arg>
     </cmdsynopsis>
     <para>
     where
     <synopsis>
     <cmdsynopsis><arg><replaceable class="option">OPTIONS</replaceable></arg></cmdsynopsis>
     represents zero or more stat-cl options.
-    <cmdsynopsis><arg choice="plain"><replaceable class="parameter">PID</replaceable></arg></cmdsynopsis> 
+    <cmdsynopsis><arg choice="plain"><replaceable class="parameter">PID</replaceable></arg></cmdsynopsis>
     is the PID of the parallel job launcher for the target application to attach to.
-    <cmdsynopsis><arg choice="plain" rep="repeat"><replaceable class="parameter">COMMAND</replaceable></arg></cmdsynopsis> 
+    <cmdsynopsis><arg choice="plain" rep="repeat"><replaceable class="parameter">COMMAND</replaceable></arg></cmdsynopsis>
     is the command to launch the application.
     </synopsis>
     </para>

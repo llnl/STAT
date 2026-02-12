@@ -1,5 +1,5 @@
-/*
-Copyright (c) 2007-2018, Lawrence Livermore National Security, LLC.
+/**
+Copyright (c) 2007-2020, Lawrence Livermore National Security, LLC.
 Produced at the Lawrence Livermore National Laboratory
 Written by Gregory Lee [lee218@llnl.gov], Dorian Arnold, Matthew LeGendre, Dong Ahn, Bronis de Supinski, Barton Miller, Martin Schulz, Niklas Nielson, Nicklas Bo Jensen, Jesper Nielson, and Sven Karlsson.
 LLNL-CODE-750488.
@@ -43,50 +43,6 @@ extern const char *gEdgeAttrs[];
 extern int gNumNodeAttrs;
 extern int gNumEdgeAttrs;
 
-StatError_t statInit(int *argc, char ***argv, StatDaemonLaunch_t launchType)
-{
-    int intRet;
-    sigset_t mask;
-    lmon_rc_e lmonRet;
-
-    /* unblock all signals. */
-    /* In 3/2014, SIGUSR2 was found to be blocked on Cray systems, which was causing detach to hang */
-    intRet = sigfillset(&mask);
-    if (intRet == 0)
-    {
-        intRet = pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
-        if (intRet != 0)
-            fprintf(stderr, "warning: failed to set pthread_sigmask: %s\n", strerror(errno));
-    }
-
-    if (launchType == STATD_LMON_LAUNCH)
-    {
-        lmonRet = LMON_be_init(LMON_VERSION, argc, argv);
-        if (lmonRet != LMON_OK)
-        {
-            fprintf(stderr, "Failed to initialize Launchmon\n");
-            return STAT_LMON_ERROR;
-        }
-    }
-    return STAT_OK;
-}
-
-StatError_t statFinalize(StatDaemonLaunch_t launchType)
-{
-    lmon_rc_e lmonRet;
-
-    if (launchType == STATD_LMON_LAUNCH)
-    {
-        lmonRet = LMON_be_finalize();
-        if (lmonRet != LMON_OK)
-        {
-            fprintf(stderr, "Failed to finalize Launchmon\n");
-            return STAT_LMON_ERROR;
-        }
-    }
-
-    return STAT_OK;
-}
 
 STAT_BackEnd::STAT_BackEnd(StatDaemonLaunch_t launchType) :
     swLogBuffer_(STAT_SW_DEBUG_BUFFER_LENGTH),
@@ -157,10 +113,10 @@ STAT_BackEnd::~STAT_BackEnd()
     {
         for (i = 0; i < proctabSize_; i++)
         {
-            if (proctab_[i].pd.executable_name != NULL)
-                free(proctab_[i].pd.executable_name);
-            if (proctab_[i].pd.host_name != NULL)
-                free(proctab_[i].pd.host_name);
+            if (proctab_[i].executable_name != NULL)
+                free(proctab_[i].executable_name);
+            if (proctab_[i].host_name != NULL)
+                free(proctab_[i].host_name);
         }
         free(proctab_);
         proctab_ = NULL;
@@ -516,10 +472,19 @@ StatError_t STAT_BackEnd::generateGraphs(graphlib_graph_p *prefixTree2d, graphli
     return STAT_OK;
 }
 
-
-StatError_t STAT_BackEnd::init()
+StatError_t STAT_BackEnd::init(int *argc, char ***argv)
 {
-    int intRet;
+    /* unblock all signals. */
+    /* In 3/2014, SIGUSR2 was found to be blocked on Cray systems, which was causing detach to hang */
+    sigset_t mask;
+    int intRet = sigfillset(&mask);
+    if (intRet == 0)
+    {
+        intRet = pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
+        if (intRet != 0)
+            fprintf(stderr, "warning: failed to set pthread_sigmask: %s\n", strerror(errno));
+    }
+
     char abuf[INET_ADDRSTRLEN], fileName[BUFSIZE], *envValue;
     FILE *file;
     struct sockaddr_in *sinp = NULL;
@@ -589,92 +554,6 @@ StatError_t STAT_BackEnd::init()
 #endif
     return STAT_OK;
 }
-
-#ifdef STAT_GDB_BE
-StatError_t STAT_BackEnd::initGdb()
-{
-    PyObject *pName;
-    const char *moduleName = "stat_cuda_gdb";
-    Py_Initialize();
-    pName = PyString_FromString(moduleName);
-    if (pName == NULL)
-    {
-        fprintf(errOutFp_, "Cannot convert argument\n");
-        return STAT_SYSTEM_ERROR;
-    }
-
-    gdbModule_ = PyImport_Import(pName);
-    Py_DECREF(pName);
-    if (gdbModule_ == NULL)
-    {
-        fprintf(errOutFp_, "Failed to import Python module %s\n", moduleName);
-        PyErr_Print();
-        return STAT_SYSTEM_ERROR;
-    }
-    usingGdb_ = true;
-
-    return STAT_OK;
-}
-#endif
-
-
-StatError_t STAT_BackEnd::initLmon()
-{
-    int size;
-    lmon_rc_e lmonRet;
-
-    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Registering unpack function with Launchmon\n");
-    lmonRet = LMON_be_regUnpackForFeToBe(unpackStatBeInfo);
-    if (lmonRet != LMON_OK)
-    {
-        printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "Failed to register unpack function\n");
-        return STAT_LMON_ERROR;
-    }
-
-    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Launchmon handshaking\n");
-    lmonRet = LMON_be_handshake(NULL);
-    if (lmonRet != LMON_OK)
-    {
-        printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "Failed to handshake with Launchmon\n");
-        return STAT_LMON_ERROR;
-    }
-
-    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Waiting for launchmon to be ready\n");
-    lmonRet = LMON_be_ready(NULL);
-    if (lmonRet != LMON_OK)
-    {
-        printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "Launchmon failed to get ready\n");
-        return STAT_LMON_ERROR;
-    }
-
-    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Allocating process table\n");
-    lmonRet = LMON_be_getMyProctabSize(&size);
-    if (lmonRet != LMON_OK)
-    {
-        printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "Failed to get Process Table Size\n");
-        return STAT_LMON_ERROR;
-    }
-    proctab_ = (MPIR_PROCDESC_EXT *)malloc(size * sizeof(MPIR_PROCDESC_EXT));
-    if (proctab_ == NULL)
-    {
-        printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "%s: Error allocating process table\n", strerror(errno));
-        return STAT_ALLOCATE_ERROR;
-    }
-
-    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Getting my process table entries\n");
-    lmonRet = LMON_be_getMyProctab(proctab_, &proctabSize_, size);
-    if (lmonRet != LMON_OK)
-    {
-        printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "Failed to get Process Table\n");
-        return STAT_LMON_ERROR;
-    }
-
-    initialized_ = true;
-    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Launchmon successfully initialized\n");
-
-    return STAT_OK;
-}
-
 
 static void onCrashWrap(int sig, siginfo_t *info, void *context)
 {
@@ -786,7 +665,6 @@ void STAT_BackEnd::registerSignalHandlers(bool enable)
     sigaction(SIGTERM, &action, NULL);
 }
 
-
 StatError_t STAT_BackEnd::addSerialProcess(const char *pidString)
 {
     static int rank = -1;
@@ -837,7 +715,7 @@ StatError_t STAT_BackEnd::addSerialProcess(const char *pidString)
     if (strcmp(remoteHost.c_str(), "localhost") == 0 || strcmp(remoteHost.c_str(), localHostName_) == 0 || strcmp(remoteHost.c_str(), localIp_) == 0)
     {
         proctabSize_++;
-        proctab_ = (MPIR_PROCDESC_EXT *)realloc(proctab_, proctabSize_ * sizeof(MPIR_PROCDESC_EXT));
+        proctab_ = (StatBackEndProcInfo_t *)realloc(proctab_, proctabSize_ * sizeof(StatBackEndProcInfo_t));
         if (proctab_ == NULL)
         {
             printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "%s: Failed to allocate memory for the process table\n", strerror(errno));
@@ -847,236 +725,21 @@ StatError_t STAT_BackEnd::addSerialProcess(const char *pidString)
 
         proctab_[proctabSize_ - 1].mpirank = rank;
         if (remoteNode != NULL)
-            proctab_[proctabSize_ - 1].pd.host_name = remoteNode;
+            proctab_[proctabSize_ - 1].host_name = remoteNode;
         else
         {
-            proctab_[proctabSize_ - 1].pd.host_name = strdup("localhost");
-            if (proctab_[proctabSize_ - 1].pd.host_name == NULL)
+            proctab_[proctabSize_ - 1].host_name = strdup("localhost");
+            if (proctab_[proctabSize_ - 1].host_name == NULL)
             {
                 printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "%s Failed on call to strdup to proctab_[%d]\n", strerror(errno), proctabSize_ - 1);
                 return STAT_ALLOCATE_ERROR;
             }
         }
-        proctab_[proctabSize_ - 1].pd.executable_name = executablePath;
-        proctab_[proctabSize_ - 1].pd.pid = pid;
+        proctab_[proctabSize_ - 1].executable_name = executablePath;
+        proctab_[proctabSize_ - 1].pid = pid;
     }
 
     initialized_ = true;
-    return STAT_OK;
-}
-
-StatError_t STAT_BackEnd::connect(int argc, char **argv)
-{
-    int i, newProctabSize, oldProctabSize, index;
-    unsigned int j, k, nextNodeRank;
-    bool found;
-    char *param[6], parentPort[BUFSIZE], parentRank[BUFSIZE], myRank[BUFSIZE];
-    pid_t pid;
-    string prettyHost, leafPrettyHost;
-    MPIR_PROCDESC_EXT *oldProctab, *newProctab;
-    lmon_rc_e lmonRet;
-    StatLeafInfoArray_t leafInfoArray;
-
-    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Prepearing to connect to MRNet\n");
-
-    if (argc == 0 || argv == NULL)
-    {
-        if (initialized_ == false)
-        {
-            printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "Trying to connect when not initialized\n");
-            return STAT_LMON_ERROR;
-        }
-
-        printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Receiving connection information from FE\n");
-        lmonRet = LMON_be_recvUsrData((void *)&leafInfoArray);
-        if (lmonRet != LMON_OK)
-        {
-            printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "Failed to receive data from FE\n");
-            return STAT_LMON_ERROR;
-        }
-
-        /* Master broadcast number of daemons */
-        printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Broadcasting size of connection info to daemons\n");
-        lmonRet = LMON_be_broadcast((void *)&(leafInfoArray.size), sizeof(int));
-        if (lmonRet != LMON_OK)
-        {
-            printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "Failed to broadcast num_leaves\n");
-            return STAT_LMON_ERROR;
-        }
-
-        /* Non-masters allocate space for the MRNet connection info */
-        if (LMON_be_amIMaster() == LMON_NO)
-        {
-            leafInfoArray.leaves = (StatLeafInfo_t *)malloc(leafInfoArray.size * sizeof(StatLeafInfo_t));
-            if (leafInfoArray.leaves == NULL)
-            {
-                printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to allocate %d x %d = %dB of memory for leaf info\n", leafInfoArray.size, sizeof(StatLeafInfo_t), leafInfoArray.size*sizeof(StatLeafInfo_t));
-                return STAT_ALLOCATE_ERROR;
-            }
-        }
-
-        /* Master broadcast MRNet connection information to all daemons */
-        printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Broadcasting connection information to all daemons\n");
-        lmonRet = LMON_be_broadcast((void *)(leafInfoArray.leaves), leafInfoArray.size * sizeof(StatLeafInfo_t));
-        if (lmonRet != LMON_OK)
-        {
-            printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "Failed to broadcast num_leaves\n");
-            return STAT_LMON_ERROR;
-        }
-
-        /* Find my MRNet personality  */
-        printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Searching for my connection information\n");
-        found = false;
-        XPlat::NetUtils::GetHostName(localHostName_, prettyHost);
-        for (k = 0; k < leafInfoArray.size; k++)
-        {
-            XPlat::NetUtils::GetHostName(string(leafInfoArray.leaves[k].hostName), leafPrettyHost);
-            if (prettyHost == leafPrettyHost || strcmp(leafPrettyHost.c_str(), localIp_) == 0)
-            {
-                found = true;
-                parentHostName_ = strdup(leafInfoArray.leaves[k].parentHostName);
-                if (parentHostName_ == NULL)
-                {
-                    printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "%s Failed on call to strdup(%s) to parentHostName_)\n", strerror(errno), leafInfoArray.leaves[k].parentHostName);
-                    return STAT_ALLOCATE_ERROR;
-                }
-                parentPort_ = leafInfoArray.leaves[k].parentPort;
-                parentRank_ = leafInfoArray.leaves[k].parentRank;
-                myRank_ = leafInfoArray.leaves[k].rank;
-                break;
-            }
-        }
-        if (found == false)
-        {
-            printMsg(STAT_MRNET_ERROR, __FILE__, __LINE__, "Failed to find MRNet parent info\n");
-            return STAT_MRNET_ERROR;
-        }
-
-        printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Found MRNet connection info, parent hostname = %s, parent port = %d, my MRNet rank = %d\n", parentHostName_, parentPort_, myRank_);
-
-        if (nDaemonsPerNode_ > 1)
-        {
-            nextNodeRank = myNodeRank_;
-            pid = 1;
-            for (j = 1; j < nDaemonsPerNode_ && pid > 0; j++)
-            {
-                nextNodeRank++;
-                pid = fork();
-                if (pid == 0)
-                {
-                    myNodeRank_ = nextNodeRank;
-                    myRank_ = leafInfoArray.size * myNodeRank_ + myRank_;
-                }
-                else if (pid < 0)
-                {
-                    printMsg(STAT_SYSTEM_ERROR, __FILE__, __LINE__, "Failed to fork with pid %d\n", pid);
-                    return STAT_SYSTEM_ERROR;
-                }
-            }
-            newProctabSize = proctabSize_ / nDaemonsPerNode_;
-            if (proctabSize_ % nDaemonsPerNode_ > myNodeRank_)
-                newProctabSize++;
-            newProctab = (MPIR_PROCDESC_EXT *)malloc(newProctabSize * sizeof(MPIR_PROCDESC_EXT));
-            if (newProctab == NULL)
-            {
-                printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "%s: Error allocating %d new process table\n", strerror(errno), newProctabSize);
-                return STAT_ALLOCATE_ERROR;
-            }
-            index = myNodeRank_ * (proctabSize_ / nDaemonsPerNode_);
-            if (proctabSize_ % nDaemonsPerNode_ > 0)
-            {
-                if (myNodeRank_ <= proctabSize_ % nDaemonsPerNode_)
-                    index += myNodeRank_;
-                else
-                    index += proctabSize_ % nDaemonsPerNode_;
-            }
-            for (i = 0; i < newProctabSize; i++)
-            {
-                newProctab[i].mpirank = proctab_[index].mpirank;
-                newProctab[i].pd.pid = proctab_[index].pd.pid;
-                newProctab[i].pd.executable_name = strdup(proctab_[index].pd.executable_name);
-                if (newProctab[i].pd.executable_name == NULL)
-                {
-                    printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "%s: Error allocating exe name for %d %d %s\n", strerror(errno), i, index, proctab_[i].pd.executable_name);
-                    return STAT_ALLOCATE_ERROR;
-                }
-                newProctab[i].pd.host_name = strdup(proctab_[index].pd.host_name);
-                if (newProctab[i].pd.host_name == NULL)
-                {
-                    printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "%s: Error allocating exe name for %d %d %s\n", strerror(errno), i, index, proctab_[i].pd.host_name);
-                    return STAT_ALLOCATE_ERROR;
-                }
-                index++;
-            }
-
-            oldProctabSize = proctabSize_;
-            oldProctab = proctab_;
-            proctabSize_ = newProctabSize;
-            proctab_ = newProctab;
-            for (i = 0; i < oldProctabSize; i++)
-            {
-                if (oldProctab[i].pd.executable_name != NULL)
-                    free(oldProctab[i].pd.executable_name);
-                if (oldProctab[i].pd.host_name != NULL)
-                    free(oldProctab[i].pd.host_name);
-            }
-            free(oldProctab);
-        }
-
-        /* Connect to the MRNet Network */
-        printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Connecting to MRNet network\n");
-        snprintf(parentPort, BUFSIZE, "%d", parentPort_);
-        snprintf(parentRank, BUFSIZE, "%d", parentRank_);
-        snprintf(myRank, BUFSIZE, "%d", myRank_);
-        param[0] = NULL;
-        param[1] = parentHostName_;
-        param[2] = parentPort;
-        param[3] = parentRank;
-        param[4] = localHostName_;
-        param[5] = myRank;
-        printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Calling CreateNetworkBE with 6 args:\n");
-        for (i = 0; i < 6; i++)
-            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "\targv[%d] = %s\n", i, param[i]);
-        network_ = Network::CreateNetworkBE(6, param);
-        if (network_ == NULL)
-        {
-            printMsg(STAT_MRNET_ERROR, __FILE__, __LINE__, "CreateNetworkBE() failed\n");
-            return STAT_MRNET_ERROR;
-        }
-        printMsg(STAT_LOG_MESSAGE,__FILE__,__LINE__,"CreateNetworkBE successfully completed\n");
-
-        if (leafInfoArray.leaves != NULL)
-            free(leafInfoArray.leaves);
-    } /* if (argc == 0 || argv == NULL) */
-    else
-    {
-        /* We were launched by MRNet */
-        /* Store my connection information */
-        parentHostName_ = strdup(argv[1]);
-        if (parentHostName_ == NULL)
-        {
-            printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "%s Failed on call to strdup(%s) to parentHostName_\n", strerror(errno), argv[1]);
-            return STAT_ALLOCATE_ERROR;
-        }
-        parentPort_ = atoi(argv[2]);
-        parentRank_ = atoi(argv[3]);
-        myRank_ = atoi(argv[5]);
-
-        /* Connect to the MRNet Network */
-        printMsg(STAT_LOG_MESSAGE, __FILE__ ,__LINE__, "Calling CreateNetworkBE with %d args:\n", argc);
-        for (i = 0; i < argc; i++)
-            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "\targv[%d] = %s\n", i, argv[i]);
-        network_ = Network::CreateNetworkBE(6, argv);
-        if (network_ == NULL)
-        {
-            printMsg(STAT_MRNET_ERROR, __FILE__, __LINE__, "CreateNetworkBE() failed\n");
-            return STAT_MRNET_ERROR;
-        }
-        printMsg(STAT_LOG_MESSAGE,__FILE__,__LINE__,"CreateNetworkBE successfully completed\n");
-    } /* else (argc == 0 || argv == NULL) */
-
-    connected_ = true;
-
     return STAT_OK;
 }
 
@@ -1676,27 +1339,31 @@ StatError_t STAT_BackEnd::attach()
 
         for (i = 0; i < proctabSize_; i++)
         {
-            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Attaching to process %s, pid %d, MPI rank %d\n", proctab_[i].pd.executable_name, proctab_[i].pd.pid, proctab_[i].mpirank);
-            pArgs = Py_BuildValue("(i)", proctab_[i].pd.pid);
+            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Attaching to process %s, pid %d, MPI rank %d\n", proctab_[i].executable_name, proctab_[i].pid, proctab_[i].mpirank);
+            pArgs = Py_BuildValue("(i)", proctab_[i].pid);
             if (!pArgs)
             {
-                printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to generate pArgs for pid %d\n", proctab_[i].pd.pid);
+                printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to generate pArgs for pid %d\n", proctab_[i].pid);
                 continue;
             }
 
             pValue = PyObject_CallObject(newFunc, pArgs);
             if (pValue == NULL)
             {
-                printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", newFunctionName.c_str(), proctab_[i].pd.pid);
+                printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", newFunctionName.c_str(), proctab_[i].pid);
                 PyErr_Print();
                 Py_DECREF(pArgs);
-                Py_DECREF(pValue);
                 continue;
             }
+#if PY_MAJOR_VERSION >= 3
+            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %ld\n", newFunctionName.c_str(), PyLong_AsLong(pValue));
+            if (PyLong_AsLong(pValue) == -1)
+#else
             printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %ld\n", newFunctionName.c_str(), PyInt_AsLong(pValue));
             if (PyInt_AsLong(pValue) == -1)
+#endif
             {
-                printMsg(STAT_WARNING, __FILE__, __LINE__, "attach failed for pid %d\n", proctab_[i].pd.pid);
+                printMsg(STAT_WARNING, __FILE__, __LINE__, "attach failed for pid %d\n", proctab_[i].pid);
                 Py_DECREF(pArgs);
                 Py_DECREF(pValue);
                 continue;
@@ -1706,13 +1373,16 @@ StatError_t STAT_BackEnd::attach()
             pValue = PyObject_CallObject(attachFunc, pArgs);
             if (pValue == NULL)
             {
-                printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", attachFunctionName.c_str(), proctab_[i].pd.pid);
+                printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", attachFunctionName.c_str(), proctab_[i].pid);
                 PyErr_Print();
                 Py_DECREF(pArgs);
-                Py_DECREF(pValue);
                 continue;
             }
+#if PY_MAJOR_VERSION >= 3
+            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %ld\n", attachFunctionName.c_str(), PyLong_AsLong(pValue));
+#else
             printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %ld\n", attachFunctionName.c_str(), PyInt_AsLong(pValue));
+#endif
 
             Py_DECREF(pArgs);
             Py_DECREF(pValue);
@@ -1734,12 +1404,12 @@ StatError_t STAT_BackEnd::attach()
         aInfo.reserve(proctabSize_);
         for (i = 0; i < proctabSize_; i++)
         {
-            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Group attach includes process %s, pid %d, MPI rank %d\n", proctab_[i].pd.executable_name, proctab_[i].pd.pid, proctab_[i].mpirank);
-            pAttach.pid = proctab_[i].pd.pid;
-            pAttach.executable = proctab_[i].pd.executable_name;
+            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Group attach includes process %s, pid %d, MPI rank %d\n", proctab_[i].executable_name, proctab_[i].pid, proctab_[i].mpirank);
+            pAttach.pid = proctab_[i].pid;
+            pAttach.executable = proctab_[i].executable_name;
             pAttach.error_ret = ProcControlAPI::err_none;
     #ifdef DYSECTAPI
-            BPatch_process * bpatch_process = bpatch_.processAttach(proctab_[i].pd.executable_name, pAttach.pid);
+            BPatch_process * bpatch_process = bpatch_.processAttach(proctab_[i].executable_name, pAttach.pid);
             tmpProcSet_.push_back(bpatch_process);
         }
         procSet_ = ProcessSet::newProcessSet();
@@ -1759,7 +1429,7 @@ StatError_t STAT_BackEnd::attach()
 
     for (i = 0; i < proctabSize_; i++)
     {
-        printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Attaching to process %s, pid %d, MPI rank %d\n", proctab_[i].pd.executable_name, proctab_[i].pd.pid, proctab_[i].mpirank);
+        printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Attaching to process %s, pid %d, MPI rank %d\n", proctab_[i].executable_name, proctab_[i].pid, proctab_[i].mpirank);
 
 #if defined(GROUP_OPS)
         if (doGroupOps_)
@@ -1834,12 +1504,12 @@ StatError_t STAT_BackEnd::attach()
         else
 #endif
         {
-            proc = Walker::newWalker(proctab_[i].pd.pid, proctab_[i].pd.executable_name);
+            proc = Walker::newWalker(proctab_[i].pid, proctab_[i].executable_name);
         }
 
         if (proc == NULL)
         {
-            printMsg(STAT_WARNING, __FILE__, __LINE__, "StackWalker Attach to task rank %d, pid %d failed with message '%s'\n", proctab_[i].mpirank, proctab_[i].pd.pid, Dyninst::Stackwalker::getLastErrorMsg());
+            printMsg(STAT_WARNING, __FILE__, __LINE__, "StackWalker Attach to task rank %d, pid %d failed with message '%s'\n", proctab_[i].mpirank, proctab_[i].pid, Dyninst::Stackwalker::getLastErrorMsg());
             swDebugBufferToFile();
         }
 
@@ -1893,22 +1563,27 @@ StatError_t STAT_BackEnd::pause()
 
         for (i = 0; i < proctabSize_; i++)
         {
-            pArgs = Py_BuildValue("(i)", proctab_[i].pd.pid);
+            pArgs = Py_BuildValue("(i)", proctab_[i].pid);
             if (!pArgs)
             {
-                printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to generate pArgs for pid %d\n", proctab_[i].pd.pid);
+                printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to generate pArgs for pid %d\n", proctab_[i].pid);
                 continue;
             }
 
+            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "calling pause\n");
             pValue = PyObject_CallObject(pauseFunc, pArgs);
             if (pValue == NULL)
             {
-                printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", pauseFunctionName.c_str(), proctab_[i].pd.pid);
+                printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", pauseFunctionName.c_str(), proctab_[i].pid);
                 PyErr_Print();
                 Py_DECREF(pArgs);
                 continue;
             }
+#if PY_MAJOR_VERSION >= 3
+            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %ld\n", pauseFunctionName.c_str(), PyLong_AsLong(pValue));
+#else
             printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %ld\n", pauseFunctionName.c_str(), PyInt_AsLong(pValue));
+#endif
             Py_DECREF(pArgs);
             Py_DECREF(pValue);
         }
@@ -1973,22 +1648,26 @@ StatError_t STAT_BackEnd::resume()
 
         for (i = 0; i < proctabSize_; i++)
         {
-            pArgs = Py_BuildValue("(i)", proctab_[i].pd.pid);
+            pArgs = Py_BuildValue("(i)", proctab_[i].pid);
             if (!pArgs)
             {
-                printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to generate pArgs for pid %d\n", proctab_[i].pd.pid);
+                printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to generate pArgs for pid %d\n", proctab_[i].pid);
                 continue;
             }
 
             pValue = PyObject_CallObject(resumeFunc, pArgs);
             if (pValue == NULL)
             {
-                printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", resumeFunctionName.c_str(), proctab_[i].pd.pid);
+                printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", resumeFunctionName.c_str(), proctab_[i].pid);
                 PyErr_Print();
                 Py_DECREF(pArgs);
                 continue;
             }
+#if PY_MAJOR_VERSION >= 3
+            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %ld\n", resumeFunctionName.c_str(), PyLong_AsLong(pValue));
+#else
             printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %ld\n", resumeFunctionName.c_str(), PyInt_AsLong(pValue));
+#endif
             Py_DECREF(pArgs);
             Py_DECREF(pValue);
         }
@@ -2210,6 +1889,7 @@ StatError_t STAT_BackEnd::getVariable(const Frame &frame, char *variableName, ch
     vector<localVar *> vars;
     vector<localVar *>::iterator varsIter;
 
+#ifdef LOCAL_VAR_H
     frame.getName(frameName);
     printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Searching for variable %s in frame %s\n", variableName, frameName.c_str());
 
@@ -2258,8 +1938,10 @@ StatError_t STAT_BackEnd::getVariable(const Frame &frame, char *variableName, ch
             }
         }
     }
-
     printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Found variable %s in frame %s\n", variableName, frameName.c_str());
+#else //#ifdef LOCAL_VAR_H
+    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "local variable header not found\n");
+#endif
     return STAT_OK;
 }
 
@@ -2301,8 +1983,8 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
     {
         static int threadCountWarning = 0;
         int nodeId, prevId, k, l, count, cudaQuick = 0;
-        char *allTraces, *currentFrame;
-        const char *countDelim = "#count#";
+        char *currentFrame;
+        const char *countDelim = "#count#", *allTraces;
         string sampleFunctionName, cudaSampleFunctionName, path, name, currentFrameString;
         string::size_type startPos, endPos;
         PyObject *sampleFunc, *cudaSampleFunc, *pArgs, *pValue, *pSampleArgs;
@@ -2362,18 +2044,18 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
                 }
                 edge->bitVector[j / STAT_BITVECTOR_BITS] |= STAT_GRAPH_BIT(j % STAT_BITVECTOR_BITS);
 
-                pArgs = Py_BuildValue("(i)", proctab_[j].pd.pid);
+                pArgs = Py_BuildValue("(i)", proctab_[j].pid);
                 if (!pArgs)
                 {
-                    printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to generate pArgs for pid %d\n", proctab_[j].pd.pid);
+                    printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to generate pArgs for pid %d\n", proctab_[j].pid);
                     statFreeEdge(edge);
                     continue;
                 }
 
-                pSampleArgs = Py_BuildValue("(iiii)", proctab_[j].pd.pid, nRetries, retryFrequency, cudaQuick);
+                pSampleArgs = Py_BuildValue("(iiii)", proctab_[j].pid, nRetries, retryFrequency, cudaQuick);
                 if (!pSampleArgs)
                 {
-                    printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to generate pSampleArgs for pid %d\n", proctab_[j].pd.pid);
+                    printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to generate pSampleArgs for pid %d\n", proctab_[j].pid);
                     statFreeEdge(edge);
                     Py_DECREF(pArgs);
                     continue;
@@ -2382,16 +2064,20 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
                 pValue = PyObject_CallObject(sampleFunc, pArgs);
                 if (pValue == NULL)
                 {
-                    printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", sampleFunctionName.c_str(), proctab_[j].pd.pid);
+                    printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", sampleFunctionName.c_str(), proctab_[j].pid);
                     statFreeEdge(edge);
                     PyErr_Print();
                     Py_DECREF(pArgs);
                     Py_DECREF(pSampleArgs);
                     continue;
                 }
+#if PY_MAJOR_VERSION >= 3
+                printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %s\n", sampleFunctionName.c_str(), PyUnicode_AsUTF8(pValue));
+                allTraces = PyUnicode_AsUTF8(pValue);
+#else
                 printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %s\n", sampleFunctionName.c_str(), PyString_AsString(pValue));
-
                 allTraces = PyString_AsString(pValue);
+#endif
                 prevId = 0;
                 path = "";
                 if (find(threadIds_.begin(), threadIds_.end(), k) == threadIds_.end())
@@ -2403,7 +2089,7 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
                         threadCountWarning++;
                     }
                 }
-                currentFrame = strtok(allTraces, "\n");
+                currentFrame = strtok((char *)allTraces, "\n");
                 while (currentFrame != NULL)
                 {
                     if (strcmp(currentFrame, "#endtrace") == 0)
@@ -2465,20 +2151,24 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
                 pValue = PyObject_CallObject(cudaSampleFunc, pSampleArgs);
                 if (pValue == NULL)
                 {
-                    printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", cudaSampleFunctionName.c_str(), proctab_[j].pd.pid);
+                    printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", cudaSampleFunctionName.c_str(), proctab_[j].pid);
                     statFreeEdge(edge);
                     PyErr_Print();
                     Py_DECREF(pArgs);
                     Py_DECREF(pSampleArgs);
                     continue;
                 }
+#if PY_MAJOR_VERSION >= 3
+                printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %s\n", cudaSampleFunctionName.c_str(), PyUnicode_AsUTF8(pValue));
+                allTraces = PyUnicode_AsUTF8(pValue);
+#else
                 printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %s\n", cudaSampleFunctionName.c_str(), PyString_AsString(pValue));
-
                 allTraces = PyString_AsString(pValue);
+#endif
                 prevId = 0;
                 count = 1;
                 path = "";
-                currentFrame = strtok(allTraces, "\n");
+                currentFrame = strtok((char *)allTraces, "\n");
                 while (currentFrame != NULL)
                 {
                     currentFrameString = currentFrame;
@@ -3446,7 +3136,7 @@ StatError_t STAT_BackEnd::getStackTraceFromAll(unsigned int nRetries, unsigned i
 #endif /* if defined(GROUP_OPS) */
 
 
-MPIR_PROCDESC_EXT *STAT_BackEnd::getProctab()
+StatBackEndProcInfo_t *STAT_BackEnd::getProctab()
 {
     return proctab_;
 }
@@ -3504,22 +3194,26 @@ StatError_t STAT_BackEnd::detach(unsigned int *stopArray, int stopArrayLen)
 
         for (i = 0; i < proctabSize_; i++)
         {
-            pArgs = Py_BuildValue("(i)", proctab_[i].pd.pid);
+            pArgs = Py_BuildValue("(i)", proctab_[i].pid);
             if (!pArgs)
             {
-                printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to generate pArgs for pid %d\n", proctab_[i].pd.pid);
+                printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to generate pArgs for pid %d\n", proctab_[i].pid);
                 continue;
             }
 
             pValue = PyObject_CallObject(detachFunc, pArgs);
             if (pValue == NULL)
             {
-                printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", detachFunctionName.c_str(), proctab_[i].pd.pid);
+                printMsg(STAT_WARNING, __FILE__, __LINE__, "%s call failed for pid %d\n", detachFunctionName.c_str(), proctab_[i].pid);
                 PyErr_Print();
                 Py_DECREF(pArgs);
                 continue;
             }
+#if PY_MAJOR_VERSION >= 3
+            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %ld\n", detachFunctionName.c_str(), PyLong_AsLong(pValue));
+#else
             printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Result of %s call: %ld\n", detachFunctionName.c_str(), PyInt_AsLong(pValue));
+#endif
             Py_DECREF(pArgs);
             Py_DECREF(pValue);
         }
@@ -3823,11 +3517,19 @@ void STAT_BackEnd::swDebugBufferToFile()
 }
 
 
-vector<Field *> *STAT_BackEnd::getComponents(Type *type)
+#if DYNINST_MAJOR_VERSION == 10 && DYNINST_MINOR_VERSION <= 1
+tbb::concurrent_vector<Field *> *STAT_BackEnd::getComponents(Type *type)
+#else
+dyn_c_vector<Field *> *STAT_BackEnd::getComponents(Type *type)
+#endif
 {
     typeTypedef *tt = NULL;
     typeStruct *ts = NULL;
-    vector<Field *> *components = NULL;
+#if DYNINST_MAJOR_VERSION == 10 && DYNINST_MINOR_VERSION <= 1
+    tbb::concurrent_vector<Field *> *components = NULL;
+#else
+    dyn_c_vector<Field *> *components = NULL;
+#endif
 
     tt = type->getTypedefType();
     if (tt == NULL)
@@ -3871,7 +3573,11 @@ StatError_t STAT_BackEnd::getPythonFrameInfo(Walker *proc, const Frame &frame, c
     StatPythonOffsets_t *pythonOffsets = NULL;
     Symtab *symtab = NULL;
     Type *type = NULL;
-    vector<Field *> *components = NULL;
+#if DYNINST_MAJOR_VERSION == 10 && DYNINST_MINOR_VERSION <= 1
+    tbb::concurrent_vector<Field *> *components = NULL;
+#else
+    dyn_c_vector<Field *> *components = NULL;
+#endif
     Field *field = NULL;
 #ifdef SW_VERSION_8_0_0
     LibraryPool::iterator libsIter;
@@ -4304,132 +4010,6 @@ void STAT_BackEnd::setMyNodeRank(int myNodeRank)
     myNodeRank_ = myNodeRank;
 }
 
-/******************
- * STATBench Code *
- ******************/
-
-StatError_t STAT_BackEnd::statBenchConnectInfoDump()
-{
-    int i, count, intRet, fd;
-    unsigned int bytesWritten, j;
-    char fileName[BUFSIZE], data[BUFSIZE], *ptr = NULL;
-    string prettyHost, leafPrettyHost;
-    lmon_rc_e lmonRet;
-    StatLeafInfoArray_t leafInfoArray;
-
-    /* Master daemon receive MRNet connection information */
-    lmonRet = LMON_be_recvUsrData((void *)&leafInfoArray);
-    if (lmonRet != LMON_OK)
-    {
-        printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "Failed to receive data from FE\n");
-        return STAT_LMON_ERROR;
-    }
-
-    /* Master broadcast number of daemons */
-    lmonRet = LMON_be_broadcast((void *)&(leafInfoArray.size), sizeof(int));
-    if (lmonRet != LMON_OK)
-    {
-        printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "Failed to broadcast num_leaves\n");
-        return STAT_LMON_ERROR;
-    }
-
-    /* Non-masters allocate space for the MRNet connection info */
-    if (LMON_be_amIMaster() == LMON_NO)
-    {
-        leafInfoArray.leaves = (StatLeafInfo_t *)malloc(leafInfoArray.size * sizeof(StatLeafInfo_t));
-        if (leafInfoArray.leaves == NULL)
-        {
-            printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to allocate memory for leaf info\n");
-            return STAT_ALLOCATE_ERROR;
-        }
-    }
-
-    /* Master broadcast MRNet connection information to all daemons */
-    lmonRet = LMON_be_broadcast((void *)(leafInfoArray.leaves), leafInfoArray.size * sizeof(StatLeafInfo_t));
-    if (lmonRet != LMON_OK)
-    {
-        printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "Failed to broadcast num_leaves\n");
-        return STAT_LMON_ERROR;
-    }
-
-    /* Since we started the STATBench daemons under debugger control, */
-    /* we must send a continue signal the STATBench daemons */
-    for (i = 0; i < proctabSize_; i++)
-        kill(proctab_[i].pd.pid, SIGCONT);
-
-    /* Find MRNet personalities for all STATBench Daemons on this node */
-    for (j = 0, count = -1; j < leafInfoArray.size; j++)
-    {
-        XPlat::NetUtils::GetHostName(localHostName_, prettyHost);
-        XPlat::NetUtils::GetHostName(string(leafInfoArray.leaves[j].hostName), leafPrettyHost);
-        if (prettyHost == leafPrettyHost)
-        {
-            count++;
-            if (count >= proctabSize_)
-            {
-                printMsg(STAT_LMON_ERROR, __FILE__, __LINE__, "The size of the leaf information for this node appears to be larger than the process table size\n");
-                return STAT_LMON_ERROR;
-            }
-
-            /* Wait for the daemon emulator to create its fifo then write its connection info */
-            snprintf(fileName, BUFSIZE, "/tmp/%s.%d.statbench.txt", localHostName_, count);
-            while (1)
-            {
-                intRet = access(fileName, W_OK);
-                if (intRet == 0)
-                    break;
-                usleep(1000);
-            }
-
-            fd = open(fileName, O_WRONLY);
-            if (fd == -1)
-            {
-                printMsg(STAT_FILE_ERROR, __FILE__, __LINE__, "%s: open() failed for %s\n", strerror(errno), fileName);
-                remove(fileName);
-                return STAT_FILE_ERROR;
-            }
-
-            snprintf(data, BUFSIZE, "%s %d %d %d %d", leafInfoArray.leaves[j].parentHostName, leafInfoArray.leaves[j].parentPort, leafInfoArray.leaves[j].parentRank, leafInfoArray.leaves[j].rank, proctab_[count].mpirank);
-            bytesWritten = 0;
-            while (bytesWritten < strlen(data))
-            {
-                ptr = data + bytesWritten;
-                intRet = write(fd, ptr, strlen(ptr));
-                if (intRet == -1)
-                {
-                    printMsg(STAT_FILE_ERROR, __FILE__, __LINE__, "%s: write() to fifo %s failed\n", strerror(errno), fileName);
-                    remove(fileName);
-                    return STAT_FILE_ERROR;
-                }
-                bytesWritten += intRet;
-            }
-
-            intRet = close(fd);
-            if (intRet != 0)
-            {
-                printMsg(STAT_FILE_ERROR, __FILE__, __LINE__, "%s: close() failed for fifo %s, fd %d\n", strerror(errno), fileName, fd);
-                remove(fileName);
-                return STAT_FILE_ERROR;
-            }
-        }
-    }
-
-    for (i = 0; i <= count; i++)
-    {
-        snprintf(fileName, BUFSIZE, "/tmp/%s.%d.statbench.txt", localHostName_, i);
-        intRet = remove(fileName);
-        if (intRet != 0)
-        {
-            printMsg(STAT_FILE_ERROR, __FILE__, __LINE__, "%s: remove() failed for fifo %s\n", strerror(errno), fileName);
-            return STAT_FILE_ERROR;
-        }
-    }
-
-    if (leafInfoArray.leaves != NULL)
-        free(leafInfoArray.leaves);
-
-    return STAT_OK;
-}
 
 StatError_t STAT_BackEnd::statBenchConnect()
 {
@@ -4536,7 +4116,7 @@ StatError_t STAT_BackEnd::statBenchCreateTraces(unsigned int maxDepth, int nTask
     if (init == 0)
     {
         proctabSize_ = nTasks;
-        proctab_ = (MPIR_PROCDESC_EXT *)malloc(proctabSize_ * sizeof(MPIR_PROCDESC_EXT));
+        proctab_ = (StatBackEndProcInfo_t *)malloc(proctabSize_ * sizeof(StatBackEndProcInfo_t));
         if (proctab_ == NULL)
         {
             printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to allocate %d bytes for proctab_\n", proctabSize_);
@@ -4545,8 +4125,8 @@ StatError_t STAT_BackEnd::statBenchCreateTraces(unsigned int maxDepth, int nTask
         proctab_[0].mpirank = myRank_ * nTasks;
         for (j = 0; j < proctabSize_; j++)
         {
-            proctab_[j].pd.executable_name = NULL;
-            proctab_[j].pd.host_name = NULL;
+            proctab_[j].executable_name = NULL;
+            proctab_[j].host_name = NULL;
             proctab_[j].mpirank = proctab_[0].mpirank + j;
         }
         init++;

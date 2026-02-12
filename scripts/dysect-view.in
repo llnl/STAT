@@ -8,6 +8,10 @@ if test -n "$STAT_PREFIX" ; then
 fi
 
 export PATH=$PATH:@DOTBINDIR@
-export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
+if test -n "$PYTHONPATH" ; then
+    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@:$PYTHONPATH
+else
+    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
+fi
 
 exec @STATPYTHON@ @pythondir@/DysectView.py $@

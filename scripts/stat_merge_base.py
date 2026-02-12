@@ -19,7 +19,10 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL LAWRENCE LIVERMORE NATIONAL SECURITY, LLC, THE U.S. DEPARTMENT OF ENERGY OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 __author__ = ["Gregory Lee <lee218@llnl.gov>", "Dorian Arnold", "Matthew LeGendre", "Dong Ahn", "Bronis de Supinski", "Barton Miller", "Martin Schulz", "Niklas Nielson", "Nicklas Bo Jensen", "Jesper Nielson"]
-__version__ = "3.0.1"
+__version_major__ = 4
+__version_minor__ = 2
+__version_revision__ = 3
+__version__ = "%d.%d.%d" % (__version_major__, __version_minor__, __version_revision__)
 
 import sys
 import os
@@ -186,7 +189,7 @@ class StatMergerArgs(object):
         # parse the args
         try:
             opts, args = getopt.getopt(sys.argv[1:], self.get_short_args_string(), self.get_long_args_list())
-        except getopt.GetoptError, err:
+        except getopt.GetoptError as err:
             sys.stderr.write('\n%s\n' % str(err))
             self.print_usage()
         except Exception as e:
@@ -250,9 +253,9 @@ class StatMerger(object):
     def generate_unique_filenames(self, count):
         if self.options["fileprefix"] == 'NULL':
             # make sure we generate unique file names
-            for i in xrange(8192):
+            for i in range(8192):
                 filenames = []
-                for j in xrange(count):
+                for j in range(count):
                     num = ''
                     if j != 0:
                         num = '_%d' % j
@@ -267,7 +270,7 @@ class StatMerger(object):
                     break
         else:
             filenames = []
-            for j in xrange(count):
+            for j in range(count):
                 num = ''
                 if j != 0:
                     num = '_%d' % j
@@ -310,24 +313,26 @@ class StatMerger(object):
 
                 trace_object = self.trace_type(filename, self.options)
                 for j, trace in enumerate(trace_object.traces):
-                    for k, sub_trace in enumerate(trace):
-                        if i == 0 and k == 0:
-                            # initialize graphlib and generate the graph objects
-                            ret = STATmerge.Init_Graphlib(self.options["high"])
-                            if ret != 0:
-                                sys.stderr.write('Failed to initialize graphlib\n')
-                                sys.exit(1)
-                            handle = STATmerge.New_Graph()
-                            if handle == -1:
-                                sys.stderr.write('Failed to create new graph\n')
-                                sys.exit(1)
-                            handles.append(handle)
-
-                        # add the current trace
-                        ret = STATmerge.Add_Trace(handles[j], trace_object.rank, trace_object.tid, sub_trace)
+                    if i == 0:
+                        # initialize graphlib and generate the graph objects
+                        ret = STATmerge.Init_Graphlib(self.options["high"])
                         if ret != 0:
-                            sys.stderr.write('Failed to add trace\n')
+                            sys.stderr.write('Failed to initialize graphlib\n')
                             sys.exit(1)
+                        handle = STATmerge.New_Graph()
+                        if handle == -1:
+                            sys.stderr.write('Failed to create new graph\n')
+                            sys.exit(1)
+                        handles.append(handle)
+                    for k, sub_trace in enumerate(trace):
+                        # add the current trace
+                        try:
+                            ret = STATmerge.Add_Trace(handles[j], trace_object.rank, trace_object.tid, sub_trace)
+                            if ret != 0:
+                                sys.stderr.write('Failed to add trace\n')
+                                sys.exit(1)
+                        except:
+                            pass
 
             if self.verbose:
                 sys.stdout.write('... done!\n')
@@ -378,7 +383,7 @@ class StatMerger(object):
                         command.append('--%s' % (name))
             command.append('-c')
             command += trace_files_subset
-            sub_processes[i] = [tmp_file_prefix, subprocess.Popen(command)]
+            sub_processes[i] = [tmp_file_prefix, subprocess.Popen(command, universal_newlines=True)]
         sys.stdout.write('\n')
         sys.stdout.flush()
         return sub_processes
@@ -392,7 +397,7 @@ class StatMerger(object):
         sys.stdout.flush()
         while remain > 0:
             time.sleep(.1)
-            for i in xrange(remain):
+            for i in range(remain):
                 key, (tmp_file_prefix, sub_process) = sub_processes.items()[i]
                 ret = sub_process.poll()
                 if ret is not None:
@@ -402,7 +407,7 @@ class StatMerger(object):
                         sys.stdout.write('\b\b\b\b%03u%%' % ((1 + total - remain) / (total / 100.0)))
                         sys.stdout.flush()
 
-                        for j in xrange(8192):
+                        for j in range(8192):
                             num = ''
                             if j != 0:
                                 num = '_%d' % j

@@ -75,5 +75,9 @@ if test -z "$LMON_FE_ENGINE_TIMEOUT" ; then
     export LMON_FE_ENGINE_TIMEOUT=600
 fi
 
-export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
+if test -n "$PYTHONPATH" ; then
+    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@:$PYTHONPATH
+else
+    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
+fi
 exec @STATPYTHON@ @pythondir@/STATmain.py cl $@

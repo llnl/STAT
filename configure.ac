@@ -2,9 +2,8 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-#AC_INIT(STAT, 3.0.1, lee218@llnl.gov, The Stack Trace Analysis Tool, http://www.paradyn.org/STAT/STAT.html)
-AC_COPYRIGHT([Copyright (c) 2007-2018, Lawrence Livermore National Security, LLC.])
-AC_INIT([STAT], [4.0.0])
+AC_COPYRIGHT([Copyright (c) 2007-2020, Lawrence Livermore National Security, LLC.])
+AC_INIT([STAT], [4.2.3])
 AC_CONFIG_AUX_DIR([config])
 AC_CONFIG_SRCDIR([configure.ac])
 AC_CONFIG_HEADER([config.h])
@@ -25,13 +24,13 @@ X_AC_GDB
 
 # Checks for libraries.
 X_AC_TEMPORALORDERINGAPI
-AM_PATH_PYTHON
 X_AC_PYTHON
+AM_PATH_PYTHON
 X_AC_GUI
+X_AC_BOOST
 X_AC_ARCH
 X_AC_DEBUGLIBS
 X_AC_GRAPHLIB
-X_AC_DYSECTAPI
 X_AC_LAUNCHMON
 X_AC_RM_COMM
 X_AC_MRNET
@@ -56,7 +55,7 @@ AC_ARG_ENABLE(rpath,
 )
 if test "$WITH_RPATH" = "yes"
 then
-  LDFLAGS="$LDFLAGS $RPATH_FLAGS"
+  LDFLAGS="-Wl,-rpath=${prefix}/lib $RPATH_FLAGS $LDFLAGS"
 else
   LDFLAGS="$LDFLAGS"
 fi
@@ -123,26 +122,11 @@ AC_SUBST(STACKWALKERPREFIX)
 AC_SUBST(DEPCOREPREFIX)
 AC_SUBST(STATPYTHON)
 
-if test "$ENABLE_DYSECT" = "yes"
-then
-  AM_PROG_LEX
-  AC_PROG_YACC
-fi
-
-AM_PATH_PYTHON
-
 AC_CONFIG_FILES([Makefile
                  src/Makefile
-                 src/dysect/Makefile
-                 src/dysect/DysectAPI/Makefile
-                 src/dysect/libDysectAPI/Makefile
-                 src/dysect/libDysectAPI/include/Makefile
-                 src/dysect/libDysectAPI/src/Makefile
-                 src/analyticslib/Makefile
                  examples/Makefile
                  examples/src/Makefile
                  examples/scripts/Makefile
-                 examples/sessions/Makefile
                  doc/Makefile
                  doc/userguide/Makefile
                  doc/quickstart/Makefile
@@ -165,15 +149,6 @@ if test "$WITH_STATBENCH" = "yes"
 then
   AC_CONFIG_FILES([scripts/STATBench
                    scripts/stat-bench])
-fi
-
-if test "$ENABLE_DYSECT" = "yes"
-then
-  AC_CONFIG_FILES([scripts/dysectc])
-  if test "$WITH_GUI" = "yes"
-  then
-    AC_CONFIG_FILES([scripts/dysect-view])
-  fi
 fi
 
 AC_CONFIG_FILES([scripts/stat-core-merger])

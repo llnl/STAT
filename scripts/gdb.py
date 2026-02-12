@@ -21,8 +21,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 __author__ = ["Gregory Lee <lee218@llnl.gov>", "Dorian Arnold", "Matthew LeGendre", "Dong Ahn", "Bronis de Supinski", "Barton Miller", "Martin Schulz", "Niklas Nielson", "Nicklas Bo Jensen", "Jesper Nielson"]
 __version_major__ = 4
-__version_minor__ = 0
-__version_revision__ = 0
+__version_minor__ = 2
+__version_revision__ = 3
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
 import subprocess
@@ -52,11 +52,12 @@ def init_logging(input_loglevel, input_logfile):
     if input_logfile == 'stdout' or input_logfile == 'stderr':
         log_stream = logStreams.get(input_logfile, logging.NOTSET)
         log_file = None
+        logging.basicConfig(level=input_loglevel, format=log_format, datefmt=log_date, stream=log_stream, filemode='w')
     else:
         log_stream = None
         log_file = input_logfile
+        logging.basicConfig(level=input_loglevel, format=log_format, datefmt=log_date, filename=log_file, filemode='w')
 
-    logging.basicConfig(level=input_loglevel, format=log_format, datefmt=log_date, filename=log_file, stream=log_stream, filemode='w')
     logging.getLogger().name = "MainThread"
     logging.log(logging.INFO, "Processing started at %s" %(datetime.now()))
     logging.log(logging.INFO, "Using log level %s to file %s:\n\t\tlogLevels=%s" %(input_loglevel, input_logfile, repr(logLevels)))
@@ -90,7 +91,7 @@ class GdbDriver(object):
         """Launch the gdb process"""
         logging.debug('launching "%s %s"' %(self.gdb_command, repr(self.gdb_args)))
         try:
-            self.subprocess = subprocess.Popen([self.gdb_command] + self.gdb_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            self.subprocess = subprocess.Popen([self.gdb_command] + self.gdb_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         except Exception as e:
             logging.error('Failed to launch "%s %s": %s' %(self.gdb_command, repr(self.gdb_args), repr(e)))
             return False
@@ -132,7 +133,7 @@ class GdbDriver(object):
                 lines.append(line)
                 ch = ''
                 line = ''
-            elif ch == ' ': # Check for the prompt, and return if we get it
+            else:
                 if self.input_prompt in line:
                     logging.debug('gdb prompt break\n')
                     break
@@ -147,6 +148,7 @@ class GdbDriver(object):
             command += '\n'
         logging.debug('sending command %s\n' %(command))
         self.subprocess.stdin.write(command)
+        self.subprocess.stdin.flush()
         return self.readlines()
 
     def attach(self):
@@ -179,7 +181,7 @@ class GdbDriver(object):
         if check_lines(lines) == False:
             return tids
         for line in lines:
-            if line[0] == '*':
+            if line and line[0] == '*':
                 line = line[1:]
             line = line.split()
             try:
@@ -252,7 +254,9 @@ class GdbDriver(object):
     def resume(self):
         """Resumes the debug target process"""
         logging.info('GDB resume PID %d' %(self.pid))
-        ret = self.subprocess.stdin.write("continue\n")
+        command = "continue\n"
+        ret = self.subprocess.stdin.write(command)
+        self.subprocess.stdin.flush()
         lines = self.readlines('Continuing')
         logging.debug('%s' %(repr(lines)))
         return check_lines(lines)
@@ -277,14 +281,14 @@ if __name__ == "__main__":
     for thread_id in tids:
         bt = gdb.bt(thread_id)
         for frame in bt:
-            print frame
-        print
+            print(frame)
+        print()
     gdb.resume()
     gdb.pause()
     bt = gdb.bt(1)
     for frame in bt:
-        print frame
-    print
+        print(frame)
+    print()
 #    gdb.kill()
-    print '\ndetaching'
+    print('\ndetaching')
     gdb.detach()

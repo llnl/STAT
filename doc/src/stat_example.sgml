@@ -4,15 +4,31 @@ The most typical usage is to invoke STAT on the job launcher's PID:
 <informalexample>
     <screen>
   % srun mpi_application arg1 arg2 &
-  [1] 16482
-  
+  [1] 16842
+
   % ps
     PID TTY          TIME CMD
   16755 pts/0    00:00:00 bash
   16842 pts/0    00:00:00 srun
   16871 pts/0    00:00:00 ps
-  
-  % stat-cl 16482
+
+  % stat-cl 16842
+    </screen>
+</informalexample>
+<para>
+Or for Flux, there is an additional step required:
+</para>
+<informalexample>
+    <screen>
+  % flux mini run -n 8 mpi_application &
+  [1] 216842
+
+  % flux jobs -A
+       JOBID USER     NAME       ST NTASKS NNODES  RUNTIME NODELIST
+    fdB2peU7 lee218   a.out       R      8      2   12.89s fluke[6-7]
+  % flux job attach --debug fdB2peU7&
+  [3] 216853
+  % stat-cl 216853
     </screen>
 </informalexample>
 <para>

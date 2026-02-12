@@ -11,7 +11,7 @@ TODO: There are still issues with gdb subprocesses remaining after the
       interrupt
 """
 
-__copyright__ = """Copyright (c) 2007-2018, Lawrence Livermore National Security, LLC."""
+__copyright__ = """Copyright (c) 2007-2022, Lawrence Livermore National Security, LLC."""
 __license__ = """Produced at the Lawrence Livermore National Laboratory
 Written by Dane Gardner, Gregory Lee <lee218@llnl.gov>, Dorian Arnold, Matthew LeGendre, Dong Ahn, Bronis de Supinski, Barton Miller, Martin Schulz, Niklas Nielson, Nicklas Bo Jensen, Jesper Nielson, and Sven Karlsson.
 LLNL-CODE-750488.
@@ -29,8 +29,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 __author__ = ["Dane Gardner", "Gregory Lee <lee218@llnl.gov>", "Dorian Arnold", "Matthew LeGendre", "Dong Ahn", "Bronis de Supinski", "Barton Miller", "Martin Schulz", "Niklas Nielson", "Nicklas Bo Jensen", "Jesper Nielson"]
 __version_major__ = 4
-__version_minor__ = 0
-__version_revision__ = 0
+__version_minor__ = 2
+__version_revision__ = 3
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
 ###############################################################################
@@ -41,16 +41,6 @@ try:
 except Exception as e:
     sys.stderr.write("The following required library is missing: stat_merge_base\n%s\n" % (repr(e)))
     sys.exit(1)
-
-have_bg_core_backtrace = True
-
-try:
-    from bg_core_backtrace import BgCoreTrace, BgCoreMerger, BgCoreMergerArgs
-except Exception as e:
-    sys.stderr.write("The following library is missing: bg_core_backtrace\n")
-    sys.stderr.write("Lightweight corefile analysis will not be enabled\n")
-    sys.stderr.write("%s\n" % (repr(e)))
-    have_bg_core_backtrace = False
 
 import subprocess, re, threading, glob, logging
 from datetime import datetime
@@ -79,15 +69,15 @@ class Gdb(object):
         args = []
         args.append('gdb')
         args.append('-ex')
-        args.append("set pagination 0")
+        args.append("'set pagination 0'")
         args.append('-ex')
-        args.append("cd %s" %(self.directory))
+        args.append("'cd %s'" %(self.directory))
         args.append('-ex')
-        args.append("path %s" %(self.objectpath))
+        args.append("'path %s'" %(self.objectpath))
         args.append('-ex')
-        args.append("directory %s" %(self.sourcepath))
+        args.append("'directory %s'" %(self.sourcepath))
         args.append('-ex')
-        args.append("set filename-display absolute")
+        args.append("'set filename-display absolute'")
         if corefile:
             self.corefile = corefile
             if os.path.isabs(self.corefile):
@@ -135,7 +125,7 @@ class Gdb(object):
         line = ''
         lines = []
         while True:
-            ch = self.subprocess.stdout.read(1)
+            ch = self.subprocess.stdout.read(1).decode('utf-8')
             if ch == '\n':
                 lines.append(line)
                 ch = ''
@@ -153,7 +143,8 @@ class Gdb(object):
            \returns a list of lines from a merged stdout/stderr stream"""
         if not command.endswith('\n'):
             command += '\n'
-        self.subprocess.stdin.write(command)
+        self.subprocess.stdin.write(command.encode('utf-8'))
+        self.subprocess.stdin.flush()
         return self.readlines()
 
 
@@ -178,6 +169,36 @@ class CudaGdb(Gdb):
         self.subprocess = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         return self.readlines()
 
+class GdbOneapi(Gdb):
+
+    def __init__ (self, options):
+        Gdb.__init__(self, options)
+        self.executable = "GPU"
+
+    def open(self, corefile, executable = None):
+        args = []
+        args.append('gdb-oneapi')
+        args.append('-ex')
+        args.append("set pagination 0")
+        args.append('-ex')
+        args.append("cd %s" %(self.directory))
+        args.append('-ex')
+        args.append("path %s" %(self.objectpath))
+        args.append('-ex')
+        args.append("directory %s" %(self.sourcepath))
+        args.append('-ex')
+        args.append("set filename-display absolute")
+        args.append('-ex')
+        target_string = "target core "
+        self.corefile = corefile
+        if os.path.isabs(self.corefile):
+            target_string += " %s" % (self.corefile)
+        else:
+            target_string += " %s/%s" % (self.coredir, self.corefile)
+        args.append(target_string)
+        self.subprocess = subprocess.Popen(args, universal_newlines=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        return self.readlines()
+
 
 ###############################################################################
 class CoreFile:
@@ -188,6 +209,7 @@ class CoreFile:
     __reFrame = re.compile(r"#(\d+)\s+(?:0x\S+\s+in\s+)?(\S+)\s+\(.*\)(?:\s+at\s+(\S+:\d+))?")
     __options = None
     _next_rank = 0
+    _files = []
 
     def __init__ (self, coreFile, options):
         if CoreFile.__options is None and not options is None:
@@ -196,7 +218,9 @@ class CoreFile:
                          'rank': CoreFile._next_rank,
                          'rankSize': None,
                          'traces': []}
-        CoreFile._next_rank += 1
+        if coreFile not in CoreFile._files:
+            CoreFile._next_rank += 1
+            CoreFile._files.append(coreFile)
 
     def add_functions(self, functions):
         """If the functions array isn't empty, reverse it to get a proper trace, and
@@ -359,6 +383,8 @@ class CoreFile:
         logging.info("Connecting gdb to the core file (%s)"%self.coreData['coreFile'])
         if CoreFile.__options['cuda'] == 1:
             gdb = CudaGdb(CoreFile.__options)
+        elif CoreFile.__options['oneapi'] == 1:
+            gdb = GdbOneapi(CoreFile.__options)
         else:
             gdb = Gdb(CoreFile.__options)
         executable = gdb.executable
@@ -380,9 +406,17 @@ class CoreFile:
 
             #Reconnect to gdb using executable
             logging.info("Reconnecting gdb to the core file (%s) AND the executable (%s)"%(self.coreData['coreFile'],executable))
+
         lines = gdb.open(self.coreData['coreFile'], executable)
-        lines2 = gdb.readlines()
-        lines += lines2
+        # check for architecture type
+        coretype = 'unknown'
+        for line in lines:
+            if line.find('ppc64le') != -1:
+                coretype = 'ppc64le'
+                break
+            elif line.find('x86_64') != -1:
+                coretype = 'x86_64'
+                break
 
         #Check for gdb errors
         logging.debug("Checking for gdb errors")
@@ -402,13 +436,21 @@ class CoreFile:
                 if not force:
                     sys.exit(2)
             elif 'warning: core file may not match specified executable file.' in line:
+                logging.critical("GDB: The executable (%s/%s) may not match the core file (%s/%s).\nThis may result in incorrect traces or hangs in this utility" %(exedir, executable, coredir, self.coreData['coreFile']))
                 if not force:
-                    logging.critical("GDB: The executable (%s/%s) may not match the core file (%s/%s). Use -r to run anyway\n" %(exedir,executable, coredir,self.coreData['coreFile']))
+                    logging.critical("Use -r to run anyway\n")
                     sys.exit(2)
             elif "%s: No such file or directory."%(executable) in line:
                 logging.critical("GDB: The executable (%s/%s) doesn't exist." %(exedir,executable))
                 if not force:
                     sys.exit(2)
+
+        # at some point we needed to gobble up an extra command prompt:
+        # as of 01/30/19 this appears to be necessary on PPC64 LE w/ vanilla GDB
+        # as of 01/30/19 this appears to be unnecessary on PPC64 LE w/ vanilla GDB
+#        if CoreFile.__options['cuda'] != 1 and coretype == 'ppc64le':
+#            lines2 = gdb.readlines()
+#            lines += lines2
 
         if symbols_loaded:
             #Find the value for the returned size from MPI_Comm_size()
@@ -458,7 +500,7 @@ class CoreFile:
                 in_thread,functions = True,[]
 
             #In some cases, gdb will quit the stack trace early
-            elif 'Backtrace stopped: ' in line:
+            elif 'Backtrace stopped: ' in line and CoreFile.__options['oneapi'] != 1:
                 logging.critical("GDB: Backtrace stopped")
                 if not force:
                     sys.exit(2)
@@ -503,6 +545,7 @@ class CoreMergerArgs(StatMergerArgs):
         self.arg_map["force"] = StatMergerArgs.StatMergerArgElement("r", False, int, 0, "whether to force parsing on warnings and errors")
         self.arg_map["threads"] = StatMergerArgs.StatMergerArgElement("T", False, int, 1, "max number of threads")
         self.arg_map["cuda"] = StatMergerArgs.StatMergerArgElement("C", False, int, 0, "set if running on cuda cores")
+        self.arg_map["oneapi"] = StatMergerArgs.StatMergerArgElement("n", False, int, 0, "set if using gdb-oneapi")
 
         self.arg_map["jobid"] = self.StatMergerArgElement("j", False, None, None, "[LW] delineate traces based on Job ID in the core file")
         self.arg_map["exe"] = StatMergerArgs.StatMergerArgElement("x", True, str, "NULL", "[LW] the executable path")
@@ -584,7 +627,23 @@ def init_logging(input_loglevel, input_logfile):
         log_stream = None
         log_file = input_logfile
 
-    logging.basicConfig(level=input_loglevel, format=log_format, datefmt=log_date, filename=log_file, stream=log_stream, filemode='w')
+    log_file_enabled = False
+    try:
+        logging.basicConfig(level=input_loglevel, format=log_format, datefmt=log_date, filename=log_file, stream=log_stream, filemode='w')
+        log_file_enabled = True
+    except ValueError:
+        pass
+    if log_file_enabled is False:
+        try:
+            logging.basicConfig(level=input_loglevel, format=log_format, datefmt=log_date, filename=log_file, filemode='w')
+            log_file_enabled = True
+        except ValueError:
+            pass
+        if log_file_enabled is False:
+            try:
+                logging.basicConfig(level=input_loglevel, format=log_format, datefmt=log_date, filemode='w')
+            except Exception as e:
+                sys.stderr.write('unable to config log file %s:\n%s\n' %(log_file, str(e)))
     logging.getLogger().name = "MainThread"
     logging.log(logging.VERBOSE, "Processing started at %s" %(datetime.now()))
     return input_loglevel
@@ -595,24 +654,57 @@ def STATmerge_main(arg_list):
     core_file_type = 'full'
     sys.argv = sys.argv[1:]
     try:
-        file_path = arg_list[arg_list.index("-c") + 1]
-        if os.path.isdir(file_path):
-            file_dir = file_path
-            for file_path in os.listdir(file_path):
-                full_path = os.path.join(file_dir, file_path)
-                if full_path.find('core') != -1 and not os.path.isdir(full_path):
-                    file_path = full_path
-                    break
-        f = open(file_path, "r")
-        line = f.readline()
-        if line.find("LIGHTWEIGHT COREFILE") != -1 or line.find("Summary") != -1:
-            core_file_type = 'lightweight'
-        else:
-            core_file_type = 'full'
+        is_dir = False
+        files = arg_list[arg_list.index("-c") + 1:]
+        first_file = files[0]
+        if os.path.isdir(first_file):
+            is_dir = True
+            filenames = os.listdir(first_file)
+            files = []
+            for filename in filenames:
+                if filename.find('core') != -1 and not os.path.isdir(filename):
+                    files.append(first_file + '/' + filename)
+        empty_files = []
+        file_types = {}
+        file_types['full'] = False
+        file_types['lw'] = False
+        for filename in files:
+            if os.stat(filename).st_size == 0:
+                empty_files.append(filename)
+            else:
+                p = subprocess.Popen(['file', filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf8', universal_newlines=True)
+                output, error = p.communicate()
+                if output.find('core file') != -1:
+                    file_types['full'] = True
+                elif output.find('ASCII text') != -1:
+                    f = open(filename, "r")
+                    line = f.readline()
+                    f.close()
+                    if line.find("LIGHTWEIGHT COREFILE") != -1 or line.find("Summary") != -1:
+                        file_types['lw'] = True
+                        core_file_type = 'lightweight'
+        if file_types['full'] == True and file_types['lw'] == True:
+            sys.stderr.write('Detected both full and lightweight core files. Please only specify files of one type\n')
+            sys.exit(2)
+        if empty_files != []:
+            sys.stderr.write("Warning: ignoring empty files %s\n" %repr(empty_files))
+            for filename in empty_files:
+                files.remove(filename)
+        arg_list = arg_list[:arg_list.index("-c") + 1]
+        sys.argv = sys.argv[:sys.argv.index("-c") + 1]
+        arg_list += files
+        sys.argv += files
     except Exception as e:
         sys.stderr.write('failed to determine core file type: %s\n' %e)
 
-    if core_file_type == 'lightweight' and have_bg_core_backtrace == True:
+    if core_file_type == 'lightweight':
+        try:
+            from bg_core_backtrace import BgCoreTrace, BgCoreMerger, BgCoreMergerArgs
+        except Exception as e:
+            sys.stderr.write("The following library is missing: bg_core_backtrace\n")
+            sys.stderr.write("Lightweight corefile analysis will not be enabled\n")
+            sys.stderr.write("%s\n" % (repr(e)))
+            sys.exit(1)
         merger = BgCoreMerger(BgCoreTrace, BgCoreMergerArgs)
     else:
         merger = CoreMerger(CoreTrace, CoreMergerArgs)

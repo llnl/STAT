@@ -1,4 +1,92 @@
 <section>
+  <title>stat version 4.2.2</title>
+  <para>
+    <itemizedlist>
+      <listitem><para>
+        invoke python with -s to prevent user site-packages from interferring
+        allow specification of GSETTINGS_SCHEMA_DIR for GUI
+      </para></listitem>
+    </itemizedlist>
+  </para>
+</section>
+
+<section>
+  <title>stat version 4.2.1</title>
+  <para>
+    <itemizedlist>
+      <listitem><para>
+        update to support dropping of local_var.h from Dyninst 12
+      </para></listitem>
+    </itemizedlist>
+  </para>
+</section>
+
+<section>
+  <title>stat version 4.2.0</title>
+  <para>
+    <itemizedlist>
+      <listitem><para>
+        Core file debugging enhancements
+      </para></listitem>
+      <listitem><para>
+        Backend refactoring
+      </para></listitem>
+      <listitem><para>
+        as always, numerous other bug fixes and minor enhancements (refer to ChangeLog file in top-level directory)
+      </para></listitem>
+    </itemizedlist>
+  </para>
+</section>
+
+<section>
+  <title>stat version 4.1.0</title>
+  <para>
+    <itemizedlist>
+      <listitem><para>
+        DynInst 10.2 support
+      </para></listitem>
+      <listitem><para>
+        Initial rocgdb support
+      </para></listitem>
+      <listitem><para>
+        as always, numerous other bug fixes and minor enhancements (refer to ChangeLog file in top-level directory)
+      </para></listitem>
+    </itemizedlist>
+  </para>
+</section>
+
+<section>
+  <title>stat version 4.0.2</title>
+  <para>
+    <itemizedlist>
+      <listitem><para>
+        DynInst 10.X support
+      </para></listitem>
+      <listitem><para>
+        Core file merging enhancements
+      </para></listitem>
+      <listitem><para>
+        as always, numerous other bug fixes and minor enhancements (refer to ChangeLog file in top-level directory)
+      </para></listitem>
+    </itemizedlist>
+  </para>
+</section>
+
+<section>
+  <title>stat version 4.0.1</title>
+  <para>
+    <itemizedlist>
+      <listitem><para>
+        Python 3 and xdot 0.9 support added
+      </para></listitem>
+      <listitem><para>
+        as always, numerous other bug fixes and minor enhancements (refer to ChangeLog file in top-level directory)
+      </para></listitem>
+    </itemizedlist>
+  </para>
+</section>
+
+<section>
   <title>stat version 4.0.0</title>
   <para>
     <itemizedlist>

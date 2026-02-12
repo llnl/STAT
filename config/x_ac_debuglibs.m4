@@ -1,5 +1,5 @@
 AC_DEFUN([X_AC_DEBUGLIBS], [
-
+  [CXXFLAGS="$CXXFLAGS -std=c++11"]
   AC_ARG_ENABLE(stackwalker-rpm,
     [AS_HELP_STRING([--enable-stackwalker-rpm],[Enable the use of rpm-installed stackwalker, default=no])],
     [CXXFLAGS="$CXXFLAGS -I/usr/include/dyninst"
@@ -8,7 +8,19 @@ AC_DEFUN([X_AC_DEBUGLIBS], [
      RPATH_FLAGS="$RPATH_FLAGS -Wl,-rpath=/usr/lib64/dyninst"],
     [CXXFLAGS="$CXXFLAGS"
      STACKWALKERPREFIX="${withval}"]
-  )  
+  )
+
+  AC_ARG_WITH(elfutils,
+    [AS_HELP_STRING([--with-elfutils=prefix],
+      [Add the compile and link search paths for elfutils]
+    )],
+    [CXXFLAGS="$CXXFLAGS -I${withval}/include"
+     LDFLAGS="-L${withval}/lib -ldw $LDFLAGS"
+     ELFUTILSPREFIX="${withval}"
+     RPATH_FLAGS="$RPATH_FLAGS -Wl,-rpath=${withval}/lib"],
+    [CXXFLAGS="$CXXFLAGS"
+     ELFUTILSPREFIX="${withval}"]
+  )
 
   AC_ARG_WITH(stackwalker,
     [AS_HELP_STRING([--with-stackwalker=prefix],
@@ -76,6 +88,38 @@ AC_DEFUN([X_AC_DEBUGLIBS], [
   fi
   AC_MSG_RESULT([$dyninst_vers_93])
 
+  AC_MSG_CHECKING([Checking Dyninst Version 10.0 or greater])
+  dyninst_vers_10=no
+  AC_COMPILE_IFELSE([AC_LANG_SOURCE([#include "dyninstversion.h"
+    int main()
+    {
+      return 0;
+    }])],
+    [dyninst_vers_10=yes],
+    []
+  )
+
+  if test "$dyninst_vers_10" = yes; then
+    AC_COMPILE_IFELSE([AC_LANG_SOURCE([#include "dyninstversion.h"
+      #if DYNINST_MAJOR_VERSION < 10
+        #error
+      #endif
+      int main()
+      {
+        return 0;
+      }])],
+      [CXXFLAGS="$CXXFLAGS -std=c++11"],
+      [dyninst_vers_10=no]
+    )
+  fi
+  AC_MSG_RESULT([$dyninst_vers_10])
+
+  AC_CHECK_HEADER(local_var.h,
+    [AC_DEFINE([LOCAL_VAR_H], [], [local_var.h])],
+    [],
+    AC_INCLUDES_DEFAULT
+  )
+
   AC_CHECK_HEADER(Symtab.h,
     [],
     [AC_MSG_ERROR([Symtab.h is required.  Specify prefix with --with-stackwalker])],
@@ -95,7 +139,7 @@ AC_DEFUN([X_AC_DEBUGLIBS], [
   if test "$libstackwalk_found" = yes; then
     BELIBS="-ldyninstAPI -lstackwalk -lpcontrol -lparseAPI -linstructionAPI -lsymtabAPI -lcommon -ldynElf -ldynDwarf -lsymLite $BELIBS"
   else
-    LDFLAGS="$LDFLAGS -lstackwalk -lsymtabAPI -lpcontrol -lparseAPI -linstruction -lcommon -lpthread"
+    LDFLAGS="$LDFLAGS -lstackwalk -lsymtabAPI -lpcontrol -lparseAPI -linstructionAPI -lcommon -lpthread"
     AC_LINK_IFELSE([AC_LANG_PROGRAM(#include "walker.h"
       using namespace Dyninst;
       using namespace Dyninst::Stackwalker;
@@ -105,7 +149,7 @@ AC_DEFUN([X_AC_DEBUGLIBS], [
     )
     LDFLAGS=$TMP_LDFLAGS
     if test "$libstackwalk_found" = yes; then
-      BELIBS="-ldyninstAPI -lstackwalk -lsymtabAPI -lpcontrol -lparseAPI -linstruction -lcommon $BELIBS"
+      BELIBS="-ldyninstAPI -lstackwalk -lsymtabAPI -lpcontrol -lparseAPI -linstructionAPI -lcommon $BELIBS"
     else
       LDFLAGS="$LDFLAGS -lstackwalk -lsymtabAPI -lcommon -lpthread"
       AC_LINK_IFELSE([AC_LANG_PROGRAM(#include "walker.h"

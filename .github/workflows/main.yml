@@ -1,0 +1,58 @@
+name: A workflow for CI testing of a STAT commit
+#author: Gregory L. Lee <lee218@llnl.gov>
+#description: build STAT's dependences (or uses cached builds), builds STAT, and then runs STAT on a simple serial application.
+on: push
+jobs:
+  build:
+    name: Hello world action
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Cache Dependences
+        id: cacher
+        uses: actions/cache@v2
+        with:
+            path: /home/runner/local
+            #key: ${{ runner.os }}-${{ hashFiles('**/lockfiles') }}
+            key: ${{ runner.os }}
+      - uses: ./action-a
+        with:
+          MY_NAME: "Greg"
+      - name: test cache
+        if: steps.cacher.outputs.cache-hit == 'true'
+        run: ls -l $HOME/local/lib
+      - name: Build dependences
+        run: |
+            sudo apt-get update
+            sudo apt-get install graphviz
+            sudo apt-get install libboost-all-dev
+            sudo apt-get install elfutils
+            sudo apt-get install libelf-dev
+            sudo apt-get install libgcrypt-dev
+            sudo apt-get install build-essential
+            sudo apt-get install texlive
+            sudo apt-get install binutils-dev
+            sudo apt-get install libiberty-dev
+            sudo apt-get install mpich
+            sudo apt-get install slurm
+            sudo apt-get install pkg-config
+            sudo apt-get install python python-dev
+      - shell: bash
+        if: steps.cacher.outputs.cache-hit != 'true'
+        run: ./.github/scripts/builddeps.sh
+      - shell: bash
+        run: |
+          set -x
+          ls -l ./
+          ./bootstrap
+          ./configure --prefix=$HOME/install --with-graphlib=$HOME/local --with-stackwalker=$HOME/local --with-mrnet=$HOME/local --with-launchmon=$HOME/local --disable-examples || cat config.log
+          make -j
+          make install
+          export LD_LIBRARY_PATH=$HOME/local/lib
+          $HOME/install/bin/stat-cl --help
+          echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope || echo failed
+          gcc -g examples/src/serial.c -o a.out
+          ./a.out &
+          $HOME/install/bin/stat-cl -I $!
+          cat stat_results/output.0000/00_output.0000.2D.dot
+          cat stat_results/output.0000/*.dot

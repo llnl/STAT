@@ -2,7 +2,7 @@
 An implementation for merging BlueGene lightweight core files into a .dot
 format suitable for the Stack Trace Analysis Tool."""
 
-__copyright__ = """Copyright (c) 2007-2018, Lawrence Livermore National Security, LLC."""
+__copyright__ = """Copyright (c) 2007-2020, Lawrence Livermore National Security, LLC."""
 __license__ = """Produced at the Lawrence Livermore National Laboratory
 Written by Gregory Lee <lee218@llnl.gov>, Dorian Arnold, Matthew LeGendre, Dong Ahn, Bronis de Supinski, Barton Miller, Martin Schulz, Niklas Nielson, Nicklas Bo Jensen, Jesper Nielson, and Sven Karlsson.
 LLNL-CODE-750488.
@@ -20,8 +20,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 __author__ = ["Gregory Lee <lee218@llnl.gov>", "Dorian Arnold", "Matthew LeGendre", "Dong Ahn", "Bronis de Supinski", "Barton Miller", "Martin Schulz", "Niklas Nielson", "Nicklas Bo Jensen", "Jesper Nielson"]
 __version_major__ = 4
-__version_minor__ = 0
-__version_revision__ = 0
+__version_minor__ = 2
+__version_revision__ = 3
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
 import sys
@@ -38,6 +38,7 @@ class CoreType(Enum):
     LCF = 3
     FUNCTION_SOURCE_LINE = 4
     HEXADDR = 5
+    FUNCTION_SOURCE = 6
 
 addr2line_exe = '/usr/bin/addr2line'
 addr2line_map = {}
@@ -87,8 +88,14 @@ class BgCoreTrace(StatTrace):
         patterns[CoreType.DYSECT] = r"([^\+]+)\+([^\+]+)"
         patterns[CoreType.LCF] = r"([^:]+):(.*)"
         patterns[CoreType.FUNCTION_SOURCE_LINE] = r"([^@]+)@([^:]+):([0-9\?]+)"
+        patterns[CoreType.FUNCTION_SOURCE] = r"([^@]+)@([^@]+)"
         patterns[CoreType.UNKNOWN] = r"[.]*"
+        any_lcf = False
         for line in f:
+            if line == '\n' or line[0] == '#':
+                print(line)
+                continue
+            line = line.strip('"')
             if line.find('Job ID') != -1:
                 job_id = int(line.split(':')[1][1:])
                 if job_id not in job_ids:
@@ -103,7 +110,8 @@ class BgCoreTrace(StatTrace):
                 function_only_trace = []
                 continue
             elif line.find('---STACK') != -1 or line.find('End of stack') != -1:
-                if core_type == CoreType.DYSECT or core_type == CoreType.FUNCTION_SOURCE_LINE:
+                #if (core_type == CoreType.DYSECT or core_type == CoreType.FUNCTION_SOURCE_LINE) and any_lcf == False:
+                if core_type == CoreType.DYSECT:
                     # module offset frames are coming from callpath and need to be
                     # flipped such that the TOS is at the end of the trace
                     line_number_trace.reverse()
@@ -156,6 +164,7 @@ class BgCoreTrace(StatTrace):
             match = re.match(patterns[CoreType.LCF], line.replace("::", "STATDOUBLECOLON"))
             if line_info is None and match:
                 core_type = CoreType.LCF
+                any_lcf = True
                 function = match.group(1).replace("STATDOUBLECOLON", "::")
                 source_line = match.group(2).replace("STATDOUBLECOLON", "::")
                 match = re.match(r"([^:]+):(.*)", source_line)
@@ -173,12 +182,19 @@ class BgCoreTrace(StatTrace):
                 module = self.options["exe"]
                 addr = match.group(1)
                 line_info = ''
+            match = re.match(patterns[CoreType.FUNCTION_SOURCE], line)
+            if line_info is None and match:
+                core_type = CoreType.FUNCTION_SOURCE
+                function = match.group(1)
+                source = match.group(2)
+                line_info = '%s@%s:-1' %(function, source)
             if line_info is None:
-                sys.stderr.write('\nWarning: format of stack frame "%s" not recognized\n\n' %(line))
+                if line != '***FAULT':
+                    sys.stderr.write('\nWarning: format of stack frame "%s" not recognized for core type %s\n\n' %(line, core_type))
                 function = line
                 line_info = line
             elif core_type == CoreType.BGQ or core_type == CoreType.DYSECT or core_type == CoreType.HEXADDR:
-                output = Popen([addr2line_exe, '-e', module, '--demangle', '-s', '-f', addr], stdout=PIPE).communicate()[0]
+                output = Popen([addr2line_exe, '-e', module, '--demangle', '-s', '-f', addr], stdout=PIPE, universal_newlines=True).communicate()[0]
                 out_lines = output.split('\n')
                 line_info = '%s@%s' % (out_lines[0], out_lines[1])
                 if line_info.find('@') != -1:
@@ -203,7 +219,12 @@ class BgCoreMerger(StatMerger):
         for filename in trace_files:
             if filename.rfind('.') != -1:
                 rank = filename[filename.rfind('.')+1:]
-                rank = int(rank)
+                try:
+                    rank = int(rank)
+                except Exception as e:
+                    print("error determining rank of %s", filename)
+                    print(e)
+                    continue
                 if rank > high_rank:
                     high_rank = rank
         return high_rank
@@ -221,6 +242,9 @@ class BgCoreMergerArgs(StatMergerArgs):
 
         # add an agrument type to take the application executable path
         self.arg_map["addr2line"] = StatMergerArgs.StatMergerArgElement("a", True, str, "NULL", "the path to addr2line")
+        self.arg_map["loglevel"] = StatMergerArgs.StatMergerArgElement("L", True, str, "error", "the verbosity level (critical|error|warning|info|verbose|debug|insane)")
+        self.arg_map["logfile"] = StatMergerArgs.StatMergerArgElement("F", True, str, "stdout", "the log file name (defaults to stdout)")
+        self.arg_map["force"] = StatMergerArgs.StatMergerArgElement("r", False, int, 0, "whether to force parsing on warnings and errors")
 
         # override the usage messages:
         self.usage_msg_synopsis = '\nThis tool will merge the stack traces from the user-specified lightweight core files and output 2 .dot files, one with just function names, the other with function names + line number information\n'

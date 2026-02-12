@@ -15,30 +15,36 @@ components=all
 #https://github.com/LLNL/LaunchMON/releases/download/v1.0.2/launchmon-v1.0.2.tar.gz \
 # NOTE: openmpi and dyninst both take a long time to build and will likely cause travis to timeout after 50 minutes, so they should be built in two passes
 downloads="\
-https://www.open-mpi.org/software/ompi/v2.0/downloads/openmpi-2.0.3.tar.gz \
+https://www.gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.36.tar.bz2 \
+https://www.gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.8.5.tar.bz2 \
 https://github.com/LLNL/graphlib/archive/v3.0.0.tar.gz \
-https://github.com/dyninst/mrnet/archive/v5.0.1.tar.gz \
-https://www.prevanders.net/libdwarf-20161124.tar.gz \
-https://cmake.org/files/v3.7/cmake-3.7.2.tar.gz \
-https://github.com/dyninst/dyninst/archive/v9.3.2.tar.gz"
+http://registrationcenter-download.intel.com/akdlm/irc_nas/tec/16120/l_mpi_2019.6.166.tgz \
+https://github.com/dyninst/dyninst/archive/v10.2.1.tar.gz \
+https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.2.tar.gz \
+"
+#https://github.com/LLNL/LaunchMON/releases/download/v1.0.2/launchmon-v1.0.2.tar.gz\
+#https://github.com/dyninst/mrnet/archive/v5.0.1.tar.gz \
 
 checkouts="\
-https://github.com/llnl/launchmon.git"
+https://github.com/dyninst/mrnet.git \
+https://github.com/llnl/launchmon.git
+"
 
 declare -A checkout_sha1=(\
-["launchmon"]="a7799a90e8e0a7eaa335135569e0762cc0f0c99d"
+["launchmon"]="63e254697808c9376a3638ed2166b795104d51aa"
 )
 
 declare -A extra_configure_opts=(\
-["launchmon-v1.0.2"]="--with-test-rm=orte --with-test-ncore-per-CN=2 --with-test-nnodes=1 --with-test-rm-launcher=${prefix}/bin/mpirun --with-test-installed" \
-["launchmon"]="--with-test-rm=orte --with-test-ncore-per-CN=2 --with-test-nnodes=1 --with-test-rm-launcher=${prefix}/bin/mpirun --with-test-installed" \
+["launchmon-v1.0.2"]="--with-test-rm=mpiexec_hydra --with-test-ncore-per-CN=2 --with-test-nnodes=1 --with-test-rm-launcher=${prefix}/bin/mpirun --with-test-installed" \
+["launchmon"]="--with-test-rm=mpiexec_hydra --with-test-ncore-per-CN=2 --with-test-nnodes=1 --with-test-rm-launcher=${prefix}/bin/mpirun --with-test-installed" \
 ["v5.0.1"]="--enable-shared" \
-["libdwarf-20161124"]="--enable-shared --disable-nonshared" \
+["mrnet"]="--enable-verbosebuild --disable-ltwt-threadsafe --enable-shared" \
+["openmpi-4.0.2"]="--enable-orterun-prefix-by-default" \
 )
 
 # we install dyninst in a separate prefix b/c otherwise it will break on previously installed headers
 declare -A extra_cmake_opts=(\
-["v9.3.2"]="-D CMAKE_INSTALL_PREFIX=${prefix}/dyninst -D LIBDWARF_INCLUDE_DIR=${prefix}/include -D LIBDWARF_LIBRARIES=${prefix}/lib/libdwarf.so -DCMAKE_BUILD_TYPE=Debug"
+["v10.2.1"]="-DCMAKE_BUILD_TYPE=Debug"
 )
 
 declare -r prog=${0##*/}
@@ -126,16 +132,24 @@ env
 
 for pkg in $downloads; do
     name=$(basename ${pkg} .tar.gz)
-    if test "$components" = "dyninst" -a "$name" != "v9.3.2"; then
+    name=$(basename ${name} .tar.bz2)
+    name=$(basename ${name} .tgz)
+    if test "$components" = "dyninst" -a "$name" != "v10.2.1"; then
       continue
     fi
-    if test "$components" = "ompi" -a "$name" != "openmpi-2.0.3"; then
+    if test "$components" = "impi" -a "$name" != "l_mpi_2019.6.166"; then
       continue
     fi
-    if test "$components" = "other" -a "$name" = "openmpi-2.0.3"; then
+    if test "$components" = "ompi" -a "$name" != "openmpi-4.0.2"; then
       continue
     fi
-    if test "$components" = "other" -a "$name" = "v9.3.2"; then
+    if test "$components" = "other" -a "$name" = "l_mpi_2019.6.166"; then
+      continue
+    fi
+    if test "$components" = "other" -a "$name" = "openmpi-4.0.2"; then
+      continue
+    fi
+    if test "$components" = "other" -a "$name" = "v10.2.1"; then
       continue
     fi
     cmake_opts="${extra_cmake_opts[$name]}"
@@ -145,46 +159,49 @@ for pkg in $downloads; do
        say "Using cached version of ${name}"
        continue
     fi
-    export CC=gcc
-    export CXX=g++
-    if test "$name" = "v9.3.2"; then
-      export VERBOSE=1
-      rm -f ${prefix}/lib/libiberty.a
-      export CC=gcc-4.8
-      export CXX=g++-4.8
-    fi
-    if test "$name" = "openmpi-2.0.3"; then
-      export CC=gcc-4.8
-      export CXX=g++-4.8
+    export CC=gcc-8
+    export CXX=g++-8
+    export ACLOCAL_PATH=${prefix}/share/aclocal
+    export PATH=${prefix}/bin:$PATH
+    export VERBOSE=1
+    if test "$name" = "l_mpi_2019.6.166"; then
+      curl -L -O --insecure ${pkg} || die "Failed to download ${pkg}"
+      tar xf l_mpi_2019.6.166.tgz
+      cd l_mpi_2019.6.166
+      cat << EOF > install.ini
+ACCEPT_EULA=accept
+CONTINUE_WITH_OPTIONAL_ERROR=yes
+PSET_MODE=install
+PSET_INSTALL_DIR=${prefix}
+CONTINUE_WITH_INSTALLDIR_OVERWRITE=yes
+ARCH_SELECTED=ALL
+COMPONENTS=ALL
+EOF
+      ./install.sh --silent install.ini
+      ls -l ${prefix}/impi/2019.6.166/intel64/bin/
+      for myfile in mpicc mpiCC mpicxx mpiexec mpiexec.hydra mpifc mpirun mpif77 mpif90 mpifort mpigcc mpigxx mpivars.sh mpivars.csh hydra_bstrap_proxy hydra_nameserver hydra_pmi_proxy impi_info cpuinfo; do
+        rm -f ${prefix}/bin/${myfile}
+        ln -s ${prefix}/impi/2019.6.166/intel64/bin/${myfile} ${prefix}/bin
+      done
+      add_cache "$name"
+      continue
     fi
     mkdir -p ${name}  || die "Failed to mkdir ${name}"
     (
       cd ${name} &&
       curl -L -O --insecure ${pkg} || die "Failed to download ${pkg}"
-      tar --strip-components=1 -xf *.tar.gz || die "Failed to un-tar ${name}"
+      tar --strip-components=1 -xf *.tar.gz || tar --strip-components=1 -xf *.tar.bz2 || tar --strip-components=1 -xf *.tgz || die "Failed to un-tar ${name}"
       if test -x configure; then
         ./configure --prefix=${prefix} \
                     $configure_opts  || head config.log
       elif test -f CMakeLists.txt; then
-        if test "$name" = "v9.3.2"; then
-          # travis boost 1.46.1 has a bug with shared_ptr, so force dyninst to build download/boost
-          sed -i cmake/packages.cmake -e '125 s|#set (BOOST_MIN_VERSION 1.41.0)|set (BOOST_MIN_VERSION 1.50.0)|'
-          grep BOOST_MIN cmake/packages.cmake
-        fi
         mkdir build && cd build
         which cmake
         cmake -DCMAKE_INSTALL_PREFIX=${prefix} $cmake_opts ..
       fi
-      if test "$name" = "openmpi-2.0.2"; then
-        wget https://raw.githubusercontent.com/LLNL/STAT/develop/dyninst_patches/openmpi-2.0.2_reattach.patch
-        patch -p1 < openmpi-2.0.2_reattach.patch
-      fi
-      if test "$name" = "openmpi-2.1.1"; then
-        wget https://github.com/open-mpi/ompi/pull/3709.patch
-        patch -p1 < 3709.patch
-      fi
-      make -j 32 PREFIX=${prefix} || make
-      make -j 32 PREFIX=${prefix} install || make PREFIX=${prefix} install
+
+      make -j 16 PREFIX=${prefix} || make PREFIX=${prefix}
+      make -j 16 PREFIX=${prefix} install || make PREFIX=${prefix} install
       if test "$name" = "launchmon-v1.0.2"; then
         pushd test/src
         echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
@@ -200,27 +217,6 @@ for pkg in $downloads; do
         echo 'LMON test done'
         popd
       fi
-      if test "$name" = "libdwarf-20161124"; then
-        pushd libdwarf
-        mkdir -p ${prefix}/lib
-        cp libdwarf.so ${prefix}/lib/libdwarf.so
-        cp libdwarf.so.1 ${prefix}/lib/libdwarf.so.1
-        mkdir -p ${prefix}/include
-        cp libdwarf.h  ${prefix}/include/libdwarf.h
-        cp dwarf.h ${prefix}/include/dwarf.h
-        popd
-      fi
-      if test "$name" = "v9.3.2"; then
-        pushd boost/src/boost
-          # we will force dyninst to install its own boost b/c travis 1.46.1 has buggy shared_ptr
-          ./b2 install
-        popd
-        ls
-        if test -x libiberty/libiberty.a; then
-          mkdir -p ${prefix}/lib
-          cp libiberty/libiberty.a ${prefix}/lib/libiberty.a
-        fi
-      fi
     ) || die "Failed to build and install $name"
     add_cache "$name"
 done
@@ -230,6 +226,7 @@ for url in $checkouts; do
     if test "$components" != "all" -a "$components" != "other"; then
       continue
     fi
+    source $HOME/local/bin/mpivars.sh
     name=$(basename ${url} .git)
     sha1="${checkout_sha1[$name]}"
     make_opts="${extra_make_opts[$name]}"
@@ -247,44 +244,43 @@ for url in $checkouts; do
         git checkout $sha1
       fi
 
-      # Do we need to create a Makefile?
-      if ! test -f Makefile; then
-        if ! test -f configure; then
-          ./bootstrap
-        fi
-        if test -x configure; then
-          ./configure --prefix=${prefix} \
-                      --sysconfdir=${prefix}/etc \
-                      $configure_opts || cat config.log
-        elif test -f CMakeLists.txt; then
-            mkdir build && cd build
-            cmake -DCMAKE_INSTALL_PREFIX=${prefix} $cmake_opts ..
-        fi
+      if ! test -f configure; then
+        export ACLOCAL_PATH=${prefix}/share/aclocal
+        ./bootstrap
+      fi
+      if test -x configure; then
+        ./configure --prefix=${prefix} \
+                    $configure_opts || cat config.log
+                    #--sysconfdir=${prefix}/etc \
+      elif test -f CMakeLists.txt; then
+          mkdir build && cd build
+          cmake -DCMAKE_INSTALL_PREFIX=${prefix} $cmake_opts ..
       fi
 # The hack below is only needed in the dist:trusty travis env
 # This will work around a ptrace Input/Output error when removing breakpoints
       if test "$name" = "launchmon"; then
         sed -i launchmon/src/linux/sdbg_linux_launchmon.cxx -e '2975 s|disable|//disable|'
       fi
-      make -j 32 PREFIX=${prefix} $make_opts || make PREFIX=${prefix} $make_opts
-      make -j 32 PREFIX=${prefix} $make_opts install || make PREFIX=${prefix} $make_opts install
-      make -j 32 check PREFIX=${prefix} $make_opts || make check PREFIX=${prefix} $make_opts
-      if test "$name" = "launchmon"; then
-        pushd test/src
-        echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
-        export PATH=./:${prefix}/bin:$PATH
-        which mpirun
-        export LMON_FE_ENGINE_TIMEOUT=60
-        cat test.launch_1
-        ./test.launch_1
-        sleep 60
-        cat test.attach_1
-        ./test.attach_1
-        sleep 60
-        echo 'LMON test done'
-        popd
-      fi
+      make -j 16 PREFIX=${prefix} $make_opts || make PREFIX=${prefix} $make_opts
+      make -j 16 PREFIX=${prefix} $make_opts install || make PREFIX=${prefix} $make_opts install
+      #make -j 16 check PREFIX=${prefix} $make_opts || make check PREFIX=${prefix} $make_opts
+#      if test "$name" = "launchmon"; then
+#        pushd test/src
+#        echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
+#        export PATH=./:${prefix}/bin:$PATH
+#        export LMON_FE_ENGINE_TIMEOUT=60
+#        cat test.launch_1
+#        ./test.launch_1
+#        sleep 60
+#        cat test.attach_1
+#        ./test.attach_1
+#        sleep 60
+#        echo 'LMON test done'
+#        popd
+#      fi
     ) || die "Failed to build and install $name"
+    ls -l ${prefix}/etc/ || echo failed
+    cat ${prefix}/etc/rm_mpiexec_hydra.conf || echo "not found"
     add_cache "$cache_name"
 done
 

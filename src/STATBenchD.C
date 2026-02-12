@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2007-2018, Lawrence Livermore National Security, LLC.
+Copyright (c) 2007-2020, Lawrence Livermore National Security, LLC.
 Produced at the Lawrence Livermore National Laboratory
 Written by Gregory Lee [lee218@llnl.gov], Dorian Arnold, Matthew LeGendre, Dong Ahn, Bronis de Supinski, Barton Miller, Martin Schulz, Niklas Nielson, Nicklas Bo Jensen, Jesper Nielson, and Sven Karlsson.
 LLNL-CODE-750488.
@@ -74,18 +74,17 @@ int main(int argc, char **argv)
         }
     }
 
-    statError = statInit(&argc, &argv, launchType);
+    statBackEnd = STAT_BackEnd::make(launchType);
+    if (!statBackEnd)
+    {
+        fprintf(stderr, "Failed to create STAT backend\n");
+        return STAT_ALLOCATE_ERROR;
+    }
+    
+    statError = statBackEnd->init(&argc, &argv);
     if (statError != STAT_OK)
     {
         fprintf(stderr, "Failed to initialize STAT\n");
-        return statError;
-    }
-
-    statBackEnd = new STAT_BackEnd(launchType);
-    statError = statBackEnd->init();
-    if (statError != STAT_OK)
-    {
-        fprintf(stderr, "Failed to initialize STAT_BackEnd object\n");
         return statError;
     }
 
@@ -98,14 +97,14 @@ int main(int argc, char **argv)
         {
         case 'h':
             printf("STATD-%d.%d.%d\n", STAT_MAJOR_VERSION, STAT_MINOR_VERSION, STAT_REVISION_VERSION);
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return 0;
             break;
         case 'V':
             printf("STATD-%d.%d.%d\n", STAT_MAJOR_VERSION, STAT_MINOR_VERSION, STAT_REVISION_VERSION);
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return 0;
             break;
         case 'o':
@@ -124,8 +123,8 @@ int main(int argc, char **argv)
             else
             {
                 statBackEnd->printMsg(STAT_ARG_ERROR, __FILE__, __LINE__, "Log option must equal BE, SW, SWERR, you entered %s\n", optarg);
+                statBackEnd->finalize();
                 delete statBackEnd;
-                statFinalize(launchType);
                 return STAT_ARG_ERROR;
             }
             break;
@@ -138,13 +137,13 @@ int main(int argc, char **argv)
             break;
         case '?':
             statBackEnd->printMsg(STAT_ARG_ERROR, __FILE__, __LINE__, "Unknown option %c\n", opt);
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return STAT_ARG_ERROR;
         default:
             statBackEnd->printMsg(STAT_ARG_ERROR, __FILE__, __LINE__, "Unknown option %c\n", opt);
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return STAT_ARG_ERROR;
         }; /* switch(opt) */
     } /* while(1) */
@@ -155,8 +154,8 @@ int main(int argc, char **argv)
         if (statError != STAT_OK)
         {
             statBackEnd->printMsg(statError, __FILE__, __LINE__, "Failed Start debug log\n");
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return statError;
         }
     }
@@ -168,8 +167,8 @@ int main(int argc, char **argv)
         if (statError != STAT_OK)
         {
             statBackEnd->printMsg(statError, __FILE__, __LINE__, "Failed to connect BE\n");
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return statError;
         }
 
@@ -177,20 +176,20 @@ int main(int argc, char **argv)
         if (statError != STAT_OK)
         {
             statBackEnd->printMsg(statError, __FILE__, __LINE__, "Failure in STAT BE main loop\n");
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return statError;
         }
     }
     else
     {
         /* We're the STATBench helper daemon */
-        statError = statBackEnd->initLmon();
+        statError = statBackEnd->initLauncher();
         if (statError != STAT_OK)
         {
             statBackEnd->printMsg(statError, __FILE__, __LINE__, "Failed to initialize BE\n");
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return statError;
         }
 
@@ -198,15 +197,16 @@ int main(int argc, char **argv)
         if (statError != STAT_OK)
         {
             statBackEnd->printMsg(statError, __FILE__, __LINE__, "Failed to dump connection info\n");
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return statError;
         }
     }
 
+
+    statError = statBackEnd->finalize();
     delete statBackEnd;
 
-    statError = statFinalize(launchType);
     if (statError != STAT_OK)
     {
         fprintf(stderr, "Failed to finalize LMON\n");

@@ -3,7 +3,7 @@
 """@package STATview
 Visualizes dot graphs outputted by STAT."""
 
-__copyright__ = """Copyright (c) 2007-2018, Lawrence Livermore National Security, LLC."""
+__copyright__ = """Copyright (c) 2007-2020, Lawrence Livermore National Security, LLC."""
 __license__ = """Produced at the Lawrence Livermore National Laboratory
 Written by Gregory Lee <lee218@llnl.gov>, Dorian Arnold, Matthew LeGendre, Dong Ahn, Bronis de Supinski, Barton Miller, Martin Schulz, Niklas Nielson, Nicklas Bo Jensen, Jesper Nielson, and Sven Karlsson.
 LLNL-CODE-750488.
@@ -21,8 +21,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 __author__ = ["Gregory Lee <lee218@llnl.gov>", "Dorian Arnold", "Matthew LeGendre", "Dong Ahn", "Bronis de Supinski", "Barton Miller", "Martin Schulz", "Niklas Nielson", "Nicklas Bo Jensen", "Jesper Nielson"] "Jesper Puge Nielsen"]
 __version_major__ = 4
-__version_minor__ = 0
-__version_revision__ = 0
+__version_minor__ = 2
+__version_revision__ = 3
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
 import STATview

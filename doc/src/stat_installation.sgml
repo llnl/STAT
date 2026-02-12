@@ -1,8 +1,11 @@
 <para>
-STAT and its dependencies can also be built via the Spack package management tool, available at <ulink url="https://github.com/LLNL/spack"></ulink>. Running <command>spack install stat</command> should build STAT and all of its dependencies, including those require for the STAT GUI. Note that two Spack variants exist. The first is <command>+examples</command>, to enable building example MPI code that STAT can be tested against. This is disabled by default to avoid requiring an MPI library, but enabling it will trigger a build of MPI. The second is <command>+dysect</command> to enable building of the DySectAPI.
+STAT and its dependencies can also be built via the Spack package management tool, available at <ulink url="https://github.com/spack/spack"></ulink>. Running <command>spack install stat</command> should build STAT and all of its dependencies, including those require for the STAT GUI. Note that three Spack variants exist. The first is <command>+examples</command>, to enable building example MPI code that STAT can be tested against. This is disabled by default to avoid requiring an MPI library, but enabling it will trigger a build of MPI. The second is <command>+dysect</command> to enable building of the DySectAPI. The third is <command>+fgfs</command> to build with FastGlobalFileStatus and target binary broadcast support. FGFS is crucial to scalability, particularly when debugging applications that load several large dynamic libraries.
 </para>
 <para>
-When building STAT itself, first run <command>configure</command>.  You will need to use the <option>--with-package</option> options to specify the install prefix for mrnet, graphlib, launchmon, libdwarf, and stackwalker.  These options will add the necessary include and library search paths to the compile options.  Refer to <command>configure --help</command> for exact options.  You may also wish to specify the maximum number of communication processes to launch per node with the option <option>--with-procspernode=number</option>, generally set to the number of cores per node. 
+For STAT 4.0.1 and beyond, the spack build of STAT requires Python 3 and will require the activation of the py-xdot package <command>./bin/spack activate py-xdot</command>. For versions up to and including STAT 4.0.0, the spack build of STAT requires Python 2 and requires the activation of the py-pygtk and py-enum34 packages <command>./bin/spack activate py-pygtk</command> and <command>./bin/spack activate py-enum34</command>.
+</para>
+<para>
+When building STAT itself, first run <command>configure</command>.  You will need to use the <option>--with-package</option> options to specify the install prefix for mrnet, graphlib, launchmon, libdwarf, and dyninst.  These options will add the necessary include and library search paths to the compile options.  Refer to <command>configure --help</command> for exact options.  You may also wish to specify the maximum number of communication processes to launch per node with the option <option>--with-procspernode=number</option>, generally set to the number of cores per node. 
 </para>
 <para>
 STAT creates wrapper scripts for the <command>stat-cl</command> and <command>stat-gui</command> commands.  These wrappers set appropriate paths for the launchmon and mrnet_commnode executables, based on the <option>--with-launchmon</option> and <option>--with-mrnet</option> configure options, thus it is important to specify both of these even if they share a prefix.
@@ -46,5 +49,9 @@ STAT will also, by default, add rpaths to dependent libraries.  This behavior ca
 </para>
 
 <para>
-STAT can also be configured to use GDB as a backend instead of DynInst. To specify the path to gdb, use the <option>--with-gdb</option> flag. Note that STAT currently still requires DynInst as a dependence even when using the GDB backend.
+STAT can also be configured to use GDB as a backend instead of Dyninst. To specify the path to gdb, use the <option>--with-gdb</option> flag. If CUDA kernal traces are desired, the path should point to a working cuda-gdb executable. Note that STAT currently still requires Dyninst as a dependence even when using the GDB backend.
+</para>
+
+<para>
+Dyninst 12 removed the local_var.h header file that STAT uses to gather python traces. If this feature is needed, you will either need to use Dyninst version 11 or lower, or copy the local_var.h file from <ulink url="https://raw.githubusercontent.com/dyninst/dyninst/5c7e0ee327399cfae50d77f977ff6655c2ca3ae4/stackwalk/h/local_var.h"></ulink> to your Dyninst 12+ installation's include directory
 </para>

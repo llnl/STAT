@@ -7,6 +7,10 @@ if test -n "$STAT_PREFIX" ; then
     export prefix=$STAT_PREFIX
 fi
 
-export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
+if test -n "$PYTHONPATH" ; then
+    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@:$PYTHONPATH
+else
+    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
+fi
 exec @STATPYTHON@ @pythondir@/attach_helper.py $@
 

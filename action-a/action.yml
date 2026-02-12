@@ -1,0 +1,17 @@
+name: "Build test"
+description: "Ensure a push doesn't break the build"
+author: "lee218@llnl.gov"
+
+inputs:
+  MY_NAME:
+    description: "Who to greet"
+    required: true
+    default: "World"
+
+runs:
+  using: "docker"
+  image: "Dockerfile"
+
+branding:
+  icon: "mic"
+  color: "purple"

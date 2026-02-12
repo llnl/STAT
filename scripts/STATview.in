@@ -8,6 +8,14 @@ if test -n "$STAT_PREFIX" ; then
 fi
 
 export PATH=$PATH:@DOTBINDIR@
-export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
+if test -n "$PYTHONPATH" ; then
+    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@:$PYTHONPATH
+else
+    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
+fi
 
-exec @STATPYTHON@ @pythondir@/STATmain.py view $@
+if test -n @GSETTINGS_SCHEMA_DIR@ ; then
+    export GSETTINGS_SCHEMA_DIR=@GSETTINGS_SCHEMA_DIR@
+fi
+
+exec @STATPYTHON@ -s @pythondir@/STATmain.py view $@

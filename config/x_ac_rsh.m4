@@ -4,7 +4,7 @@ AC_DEFUN([X_AC_RSH], [
       [Use cmd as the default remote shell]
     )],
     [withrsh="$withval"],
-    [withrsh=rsh]
+    [withrsh="rsh ssh"]
   )
   AC_PATH_PROGS(rshcmd,$withrsh,[/usr/bin/$withrsh],/usr/local/bin:/usr/bin:/bin)
 ])

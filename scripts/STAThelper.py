@@ -1,7 +1,7 @@
 """@package STAThelper
 Helper routines for STAT and STATview."""
 
-__copyright__ = """Copyright (c) 2007-2018, Lawrence Livermore National Security, LLC."""
+__copyright__ = """Copyright (c) 2007-2020, Lawrence Livermore National Security, LLC."""
 __license__ = """Produced at the Lawrence Livermore National Laboratory
 Written by Gregory Lee <lee218@llnl.gov>, Dorian Arnold, Matthew LeGendre, Dong Ahn, Bronis de Supinski, Barton Miller, Martin Schulz, Niklas Nielson, Nicklas Bo Jensen, Jesper Nielson, and Sven Karlsson.
 LLNL-CODE-750488.
@@ -19,8 +19,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 __author__ = ["Gregory Lee <lee218@llnl.gov>", "Dorian Arnold", "Matthew LeGendre", "Dong Ahn", "Bronis de Supinski", "Barton Miller", "Martin Schulz", "Niklas Nielson", "Nicklas Bo Jensen", "Jesper Nielson"]
 __version_major__ = 4
-__version_minor__ = 0
-__version_revision__ = 0
+__version_minor__ = 2
+__version_revision__ = 3
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
 import sys
@@ -208,7 +208,10 @@ class ProcTab(object):
 def get_proctab(proctab_file_path):
     """Retrieve the proctab object from a process table file"""
     with open(proctab_file_path, 'r') as proctab_file:
-        launcher = proctab_file.next().strip('\n').split(':')
+        if hasattr(proctab_file, 'next'):
+            launcher = proctab_file.next().strip('\n').split(':')
+        else:
+            launcher = next(proctab_file).strip('\n').split(':')
         proctab = ProcTab()
         proctab.launcher_host = launcher[0]
         proctab.launcher_pid = int(launcher[1])
@@ -572,7 +575,7 @@ class Translator:
             args = [self.addr2line]
             args.append('-C')
             args += ["-f", "-e", self.filename]
-            self.proc = subprocess.Popen(args, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.proc = subprocess.Popen(args, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         except Exception as e:
             sys.stderr.write("%s failed for %s: %s\n" % (self.addr2line, self.filename, e))
             self.proc = None
@@ -584,6 +587,7 @@ class Translator:
         if self.proc:
             try:
                 self.proc.stdin.write("%s\n" % addr)
+                self.proc.stdin.flush()
                 function = self.proc.stdout.readline().rstrip("\n")
                 line = self.proc.stdout.readline().rstrip("\n")
                 return "%s@%s" % (function, line)

@@ -19,14 +19,26 @@ STAT has several dependent libraries that must be installed:
 * [Dyninst](https://github.com/dyninst/dyninst)
 * [libdwarf](https://www.prevanders.net/dwarf.html)
 
-In addition, the STAT GUI requires Python with PyGTK, both of which are commonly preinstalled with many Linux operating systems.
+In addition, the STAT GUI requires Python with PyGTK, both of which are commonly preinstalled with many Linux operating systems. STAT can be built with Python 2.X and PyGTK 2.X. However, starting with STAT version 4.0.1, STAT can optionally be built with Python 3.X. The use of Python 3.X also requires PyGTK version 3.X and requires you to manually install the [xdot package](https://pypi.org/project/xdot/).
 
 Please refer to [INSTALL](/INSTALL) for detailed instructions on building STAT. The reccomended method for building STAT is to use the [Spack](https://spack.readthedocs.io) package manager with the following commands:
 ```
 git clone https://github.com/spack/spack.git
 cd spack
-./bin spack install stat
+./bin/spack install stat
 ```
+
+For STAT 4.0.1 and beyond, the spack build of STAT requires Python 3 and will require the activation of the py-xdot package:
+```
+./bin/spack activate py-xdot
+```
+
+For versions up to and including STAT 4.0.0, the spack build of STAT requires Python 2 and requires the activation of the py-pygtk and py-enum34 packages:
+```
+./bin/spack activate py-pygtk
+./bin/spack activate py-enum34
+```
+
 
 ### SUPPORTED PLATFORMS
 STAT is able to run on any machine where all of the dependent libraries run.  This currently includes:

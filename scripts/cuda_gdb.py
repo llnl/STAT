@@ -3,7 +3,7 @@
 """@package STATview
 Visualizes dot graphs outputted by STAT."""
 
-__copyright__ = """Copyright (c) 2007-2018, Lawrence Livermore National Security, LLC."""
+__copyright__ = """Copyright (c) 2007-2020, Lawrence Livermore National Security, LLC."""
 __license__ = """Produced at the Lawrence Livermore National Laboratory
 Written by Gregory Lee <lee218@llnl.gov>, Dorian Arnold, Matthew LeGendre, Dong Ahn, Bronis de Supinski, Barton Miller, Martin Schulz, Niklas Nielson, Nicklas Bo Jensen, Jesper Nielson, and Sven Karlsson.
 LLNL-CODE-750488.
@@ -21,8 +21,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 __author__ = ["Gregory Lee <lee218@llnl.gov>", "Dorian Arnold", "Matthew LeGendre", "Dong Ahn", "Bronis de Supinski", "Barton Miller", "Martin Schulz", "Niklas Nielson", "Nicklas Bo Jensen", "Jesper Nielson"]
 __version_major__ = 4
-__version_minor__ = 0
-__version_revision__ = 0
+__version_minor__ = 2
+__version_revision__ = 3
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
 import sys
@@ -218,35 +218,35 @@ if __name__ == "__main__":
     for thread_id in tids:
         bt = gdb.bt(thread_id)
         for frame in bt:
-            print frame
-        print
+            print(frame)
+        print()
     gdb.resume()
     gdb.pause()
 #    bt = gdb.bt(1)
-#    print bt
+#    print(bt)
     devices = gdb.get_cuda_devices()
-    print '\ndevices'
+    print('\ndevices')
     for device in devices:
         if gdb.cuda_device_focus(device):
-            print 'device focused', device
+            print('device focused', device)
     kernels = gdb.get_cuda_kernels()
-    print '\nkernels'
+    print('\nkernels')
     for kernel in kernels:
         if gdb.cuda_kernel_focus(kernel):
-            print 'kernel focused', kernel
+            print('kernel focused', kernel)
     bt = gdb.cuda_bt()
 #    for frame in bt:
-#        print frame
-#    print
+#        print(frame)
+#    print()
     threads = gdb.get_cuda_threads()
     for thread in threads:
         gdb.cuda_block_thread_focus(thread['start_block'], thread['start_thread'])
         bt = gdb.cuda_bt()
-        print thread['start_block'], thread['start_thread'], thread['count']
+        print(thread['start_block'], thread['start_thread'], thread['count'])
         for frame in bt:
-            print frame
-        print
+            print(frame)
+        print()
         break
 #    gdb.kill()
-    print '\ndetaching'
+    print('\ndetaching')
     gdb.detach()

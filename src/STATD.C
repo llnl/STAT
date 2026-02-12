@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2007-2018, Lawrence Livermore National Security, LLC.
+Copyright (c) 2007-2020, Lawrence Livermore National Security, LLC.
 Produced at the Lawrence Livermore National Laboratory
 Written by Gregory Lee [lee218@llnl.gov], Dorian Arnold, Matthew LeGendre, Dong Ahn, Bronis de Supinski, Barton Miller, Martin Schulz, Niklas Nielson, Nicklas Bo Jensen, Jesper Nielson, and Sven Karlsson.
 LLNL-CODE-750488.
@@ -84,15 +84,8 @@ int main(int argc, char **argv)
         }
     }
 
-    statError = statInit(&argc, &argv, launchType);
-    if (statError != STAT_OK)
-    {
-        fprintf(stderr, "Failed to initialize STAT\n");
-        return statError;
-    }
-
-    statBackEnd = new STAT_BackEnd(launchType);
-    statError = statBackEnd->init();
+    statBackEnd = STAT_BackEnd::make(launchType);
+    statError = statBackEnd->init(&argc, &argv);
     if (statError != STAT_OK)
     {
         fprintf(stderr, "Failed to initialize STAT_BackEnd object\n");
@@ -111,14 +104,14 @@ int main(int argc, char **argv)
         {
         case 'h':
             printf("STATD-%d.%d.%d\n", STAT_MAJOR_VERSION, STAT_MINOR_VERSION, STAT_REVISION_VERSION);
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return 0;
             break;
         case 'V':
             printf("STATD-%d.%d.%d\n", STAT_MAJOR_VERSION, STAT_MINOR_VERSION, STAT_REVISION_VERSION);
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return 0;
             break;
         case 'o':
@@ -140,8 +133,8 @@ int main(int argc, char **argv)
             else
             {
                 statBackEnd->printMsg(STAT_ARG_ERROR, __FILE__, __LINE__, "Log option must equal BE, SW, SWERR, you entered %s\n", optarg);
+                statBackEnd->finalize();
                 delete statBackEnd;
-                statFinalize(launchType);
                 return STAT_ARG_ERROR;
             }
             break;
@@ -161,8 +154,8 @@ int main(int argc, char **argv)
             if (statError != STAT_OK)
             {
                 statBackEnd->printMsg(statError, __FILE__, __LINE__, "Failed to initialize GDB BE\n", optarg);
+                statBackEnd->finalize();
                 delete statBackEnd;
-                statFinalize(launchType);
                 return statError;
             }
 #endif
@@ -178,14 +171,14 @@ int main(int argc, char **argv)
         case '?':
             statBackEnd->printMsg(STAT_ARG_ERROR, __FILE__, __LINE__, "Unknown option %c\n", opt);
             statBackEnd->printMsg(STAT_ARG_ERROR, __FILE__, __LINE__, "STATD invoked with %s\n", invocationString.c_str());
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return STAT_ARG_ERROR;
         default:
             statBackEnd->printMsg(STAT_ARG_ERROR, __FILE__, __LINE__, "Unknown option %c\n", opt);
             statBackEnd->printMsg(STAT_ARG_ERROR, __FILE__, __LINE__, "STATD invoked with %s\n", invocationString.c_str());
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return STAT_ARG_ERROR;
         }; /* switch(opt) */
     } /* while(1) */
@@ -196,8 +189,8 @@ int main(int argc, char **argv)
         if (statError != STAT_OK)
         {
             statBackEnd->printMsg(statError, __FILE__, __LINE__, "Failed Start debug log\n");
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return statError;
         }
         statBackEnd->printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "STATD invoked with %s\n", invocationString.c_str());
@@ -211,8 +204,8 @@ int main(int argc, char **argv)
             if (statError != STAT_OK)
             {
                 statBackEnd->printMsg(statError, __FILE__, __LINE__, "Failed add serial process %s\n", serialProcesses[j].c_str());
+                statBackEnd->finalize();
                 delete statBackEnd;
-                statFinalize(launchType);
                 return statError;
             }
         }
@@ -222,12 +215,12 @@ int main(int argc, char **argv)
         statError = statBackEnd->connect(6, &argv[argc - 6]);
     else
     {
-        statError = statBackEnd->initLmon();
+        statError = statBackEnd->initLauncher();
         if (statError != STAT_OK)
         {
             statBackEnd->printMsg(statError, __FILE__, __LINE__, "Failed to initialize BE\n");
+            statBackEnd->finalize();
             delete statBackEnd;
-            statFinalize(launchType);
             return statError;
         }
         statError = statBackEnd->connect();
@@ -235,8 +228,8 @@ int main(int argc, char **argv)
     if (statError != STAT_OK)
     {
         statBackEnd->printMsg(statError, __FILE__, __LINE__, "Failed to connect BE\n");
+        statBackEnd->finalize();
         delete statBackEnd;
-        statFinalize(launchType);
         return statError;
     }
 
@@ -246,19 +239,20 @@ int main(int argc, char **argv)
         statBackEnd->printMsg(statError, __FILE__, __LINE__, "Failure in STAT BE main loop\n");
         if (statError == STAT_STACKWALKER_ERROR)
             statBackEnd->swDebugBufferToFile();
+        statBackEnd->finalize();
         delete statBackEnd;
-        statFinalize(launchType);
         return statError;
     }
 
-    delete statBackEnd;
-
-    statError = statFinalize(launchType);
+    statError = statBackEnd->finalize();
     if (statError != STAT_OK)
     {
         fprintf(stderr, "Failed to finalize STAT\n");
         return statError;
     }
+
+    delete statBackEnd;
+
 
 #ifdef DYSECTAPI
     sleep(2);

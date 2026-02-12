@@ -1,6 +1,7 @@
 # what flags you want to pass to the C compiler & linker
 AM_CXXFLAGS = -DSTAT_PREFIX=\"$(prefix)\"
 AM_LDFLAGS =
+AUTOMAKE_OPTIONS = subdir-objects
 
 include_HEADERS=DysectAPI.h
 lib_LTLIBRARIES = libDysectAPIFE.la libDysectAPIBE.la libDysectAPIFD.la
