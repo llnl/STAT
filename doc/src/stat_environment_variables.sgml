@@ -202,5 +202,24 @@ Several environment variables influence STAT and its dependent packages.  Note t
         </para>
     </listitem>
 </varlistentry>
+<varlistentry>
+    <term>STAT_INTELGT_MAX_THREADS=<replaceable class="parameter">number</replaceable></term>
+    <listitem>
+        <para>
+        Set to a positive integer to limit the number of threads used for call-stack capture. STAT will capture stack traces from only the first N threads. For example, <literal>STAT_INTELGT_MAX_THREADS=100</literal> will capture the first 100 threads. If the value is not a positive integer, this setting is ignored and all threads are captured.
+        </para>
+    </listitem>
+</varlistentry>
+<varlistentry>
+    <term>STAT_INTELGT_EXPR_FILTER=<replaceable class="parameter">expression</replaceable></term>
+    <listitem>
+        <para>
+        Set to a GDB expression to selectively filter threads for call-stack capture. Only threads where the expression evaluates to true (non-zero) will have their stack traces captured. The new line characters and system commands keywords like <literal>shell, call, python, source, dump, restore</literal> are not allowed. The expression is evaluated in the context of each thread using GDB's thread apply command. For example, <literal>STAT_INTELGT_EXPR_FILTER="\$_thread &lt;= 50"</literal> will capture only threads with ID 50 or lower. The expression must be a valid GDB expression that returns a boolean value.
+        </para>
+        <para>
+        <emphasis role="bold">Security Note:</emphasis> This expression is directly evaluated by GDB. For security, the expression is validated to reject dangerous GDB commands such as <literal>shell, call, python</literal> and multi-line input. Only use this feature in trusted environments where environment variables are controlled.
+        </para>
+    </listitem>
+</varlistentry>
 </variablelist>
 
