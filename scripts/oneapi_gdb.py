@@ -102,19 +102,109 @@ class OneAPIGdbDriver(GdbDriver):
         Gets the list of threads in the target process. For
         Intel(R) Distribution for GDB* this function extracts active
         threads ID list.
+
+        NOTE: STAT_INTELGT_EXPR_FILTER is validated for few security checks
+        before it is evaluated by GDB.
         """
+        filter_expr_str = os.environ.get("STAT_INTELGT_EXPR_FILTER")
+
         cmd = (
             'thread apply all -q -c printf "%d.%d\\n", '
             '$_inferior, $_thread'
         )
 
+        # Thread apply commmand may end up sending commands like "shell rm *",
+        # so this list ensure to not allow these system commands.
+        danger_list = ['shell', 'call', 'python', 'source', 'dump', 'restore']
+
+        if filter_expr_str and filter_expr_str.strip():
+            filter_expr_str = filter_expr_str.strip()
+
+            # Check for unsecure characters and also if it is a valid input
+            # for GDB.
+            # Each line may be treated as separate command in GDB and
+            # fail the expression evaluation.
+            if '\n' in filter_expr_str or '\r' in filter_expr_str:
+                logging.error('STAT_INTELGT_EXPR_FILTER contains newline')
+                logging.error(f'Invalid expression: "{repr(filter_expr_str)}"')
+            # Check for dangerous GDB commands that could execute arbitrary code.
+            elif any(keyword in filter_expr_str.lower()
+                     for keyword in danger_list):
+                logging.error(f'STAT_INTELGT_EXPR_FILTER should not use: '
+                              f'{danger_list}')
+                logging.error(f'Invalid expression: "{filter_expr_str}"')
+            else:
+                # Check if the expression is valid by evaluating it with GDB.
+                validate_cmd = f'print {filter_expr_str}'
+                logging.debug(f'Validating filter expression: {validate_cmd}')
+                validation_result = self.communicate(validate_cmd)
+
+                logging.debug(f'GDB validation result: {validation_result}')
+                is_valid = False
+
+                if validation_result:
+                    for line in validation_result:
+                        line_str = line.strip()
+
+                        # GDB successfully evaluated the expression.
+                        if line_str.startswith('$') and '=' in line_str:
+                            is_valid = True
+                            logging.info(f'Using expression filter: '
+                                         f'"{filter_expr_str}"')
+                            break
+
+                        if re.search(r"(No symbol.*in current context) \
+                                     |(cannot subscript something of type)",
+                                     line_str, re.IGNORECASE):
+                            is_valid = True
+                            logging.info(f'Using expression filter '
+                                         f'"{filter_expr_str}"')
+                            break
+
+                if not is_valid:
+                    logging.warning(f'STAT_INTELGT_EXPR_FILTER expression has'
+                                    f'syntax error: "{filter_expr_str}"')
+                    logging.warning(f'GDB returned: {validation_result}')
+                else:
+                    cmd = (
+                        f'thread apply all -q -s '
+                        f'eval "printf %s, $_inferior, $_thread", '
+                        f'({filter_expr_str} ? "\\\"%d.%d\\n\\\"" : "\\\"\\\"")'
+                    )
+
+        # Require only in case of cray-stat.
+        try:
+            self.flushInput()
+        except AttributeError:
+            # Function is only available in cray-stat.
+            pass
+
         logging.info(f'gdb-oneapi: {cmd}')
 
         tids = self.communicate(cmd)
         if not tids:
+            if filter_expr_str:
+                logging.warning(f'Expression filter "{filter_expr_str}" '
+                                'resulted in zero threads')
             return []
 
-        logging.debug(f'{tids}')
+        max_threads = os.environ.get("STAT_INTELGT_MAX_THREADS")
+
+        if max_threads and max_threads.strip():
+            try:
+                int_max_threads = int(max_threads)
+                if int_max_threads <= 0:
+                    logging.warning(f'STAT_INTELGT_MAX_THREADS value {max_threads}'
+                                    'must be positive, ignoring')
+                else:
+                    tids = tids[:int_max_threads]
+                    logging.info(f'Limiting to first {int_max_threads} '
+                                 f'threads for callstack capture')
+            except ValueError:
+                logging.warning(f'STAT_INTELGT_MAX_THREADS value "{max_threads}" '
+                                'is invalid, must be a positive integer')
+
+        logging.debug(f'Filtered thread IDs list: {tids}')
 
         return tids
 
