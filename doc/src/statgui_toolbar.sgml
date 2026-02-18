@@ -1,8 +1,8 @@
 <para>
-In addition to the operations provided by stat-view, stat-gui provides a toolbar <![%userguide[(<xref linkend="statgui_toolbar">)]]> to control STAT's operation.
+In addition to the operations provided by stat-view, stat-gui provides a toolbar <![%userguide[(<xref linkend="statguiToolbar">)]]> to control STAT's operation.
 </para>
 <![%userguide[
-<figure id="statgui_toolbar">
+<figure id="statguiToolbar">
     <title>The STAT GUI toolbar.</title>
     <screenshot><mediaobject><imageobject>
     <imagedata scale="50" fileref="figs/statgui_toolbar.png">

@@ -2,10 +2,10 @@
 <!ENTITY % manpage "INCLUDE">
 <!ENTITY % userguide "IGNORE">
 <!ENTITY % llnluserguide "IGNORE">
-<!ENTITY stat_options SYSTEM "stat_options.sgml">
-<!ENTITY stat_example SYSTEM "stat_example.sgml">
-<!ENTITY stat_copyright SYSTEM "stat_copyright.sgml">
-<!ENTITY stat_description SYSTEM "stat_description.sgml">
+<!ENTITY statOptions SYSTEM "stat_options.sgml">
+<!ENTITY statExample SYSTEM "stat_example.sgml">
+<!ENTITY statCopyright SYSTEM "stat_copyright.sgml">
+<!ENTITY statDescription SYSTEM "stat_description.sgml">
 ]>
 <refentry>
 <refentryinfo>
@@ -44,15 +44,15 @@
 </refsynopsisdiv>
 <refsect1>
     <title>DESCRIPTION</title>
-    &stat_description
+    &statDescription
 </refsect1>
 <refsect1>
     <title>OPTIONS</title>
-    &stat_options
+    &statOptions
 </refsect1>
 <refsect1>
     <title>EXAMPLE</title>
-    &stat_example
+    &statExample
 </refsect1>
 <refsect1>
     <title>AUTHOR</title>
@@ -68,7 +68,7 @@
 </refsect1>
 <refsect1>
     <title>COPYRIGHT</title>
-    &stat_copyright
+    &statCopyright
 </refsect1>
 <refsect1>
     <title>SEE ALSO</title>

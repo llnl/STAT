@@ -1,7 +1,7 @@
 <!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook V4.1//EN" [
-<!ENTITY stat_license SYSTEM "stat_license.sgml">
+<!ENTITY statLicense SYSTEM "stat_license.sgml">
 ]>
 <book><title>License</title>
-<chapter><title>License</title>&stat_license</chapter>
+<chapter><title>License</title>&statLicense</chapter>
 </book>
 

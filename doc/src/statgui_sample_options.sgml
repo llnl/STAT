@@ -1,8 +1,8 @@
 <para>
-STAT has several options for stack trace sampling <![%userguide[(<xref linkend="statgui_sample_multiple_dialog">)]]>.
+STAT has several options for stack trace sampling <![%userguide[(<xref linkend="statguiSampleMultipleDialog">)]]>.
 </para>
 <![%userguide[
-<figure id="statgui_sample_multiple_dialog">
+<figure id="statguiSampleMultipleDialog">
     <title>The stat-gui operation toolbar.</title>
     <screenshot><mediaobject><imageobject>
     <imagedata scale="50" fileref="figs/statgui_sample_multiple_dialog.png">

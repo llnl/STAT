@@ -1,8 +1,8 @@
 <para>
-The main window also has several tree manipulation options <![%userguide[(<xref linkend="statview_toolbar">)]]>.  Note the initial click of a traversal operation operates on the original call prefix tree, while the remaining operations are performed on the current visible state of the call prefix tree.
+The main window also has several tree manipulation options <![%userguide[(<xref linkend="statviewToolbar">)]]>.  Note the initial click of a traversal operation operates on the original call prefix tree, while the remaining operations are performed on the current visible state of the call prefix tree.
 </para>
 <![%userguide[
-<figure id="statview_toolbar">
+<figure id="statviewToolbar">
     <title>The stat-view tree manipulation toolbar.</title>
     <screenshot><mediaobject><imageobject>
     <imagedata scale="40" fileref="figs/statview_toolbar.png">
@@ -65,10 +65,10 @@ The toolbar operations are defined as follows:
     <term><GUIbutton>Cut</GUIbutton></term>
     <listitem>
         <para>
-        This feature <![%userguide[(<xref linkend="statview_prog_model">)]]> allows you to collapse the prefix tree below the implementation frames for various programming models. For instance, a user may wish to hide all calls that happen within the MPI library.  The programming models may be entered in a configuration file or added by the user. STATview looks for configuration files in $prefix/etc/STAT/STATview_models.conf and in $HOME/.STATview_models.conf. Programming models are specified as regular expressions, using Python's <command>re</command> module syntax, and the <command>re.search</command> function is used in favor of <command>re.match</command>.
+        This feature <![%userguide[(<xref linkend="statviewProgModel">)]]> allows you to collapse the prefix tree below the implementation frames for various programming models. For instance, a user may wish to hide all calls that happen within the MPI library.  The programming models may be entered in a configuration file or added by the user. STATview looks for configuration files in $prefix/etc/STAT/STATview_models.conf and in $HOME/.STATview_models.conf. Programming models are specified as regular expressions, using Python's <command>re</command> module syntax, and the <command>re.search</command> function is used in favor of <command>re.match</command>.
         </para>
 <![%userguide[
-<figure id="statview_prog_model">
+<figure id="statviewProgModel">
     <title>The stat-view programming model cutting interface.</title>
     <screenshot><mediaobject><imageobject>
     <imagedata scale="50" fileref="figs/statview_prog_model.png">
