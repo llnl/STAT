@@ -8,7 +8,8 @@ export PYTHONPATH="/path/to/stat/install/lib/python3.XY/site-packages:${PYTHONPA
 ```
 
 Make sure to adjust `python3.XY` to match its version and `lib` to match the installation as
-some systems use `lib64`. Also, while running tests, use Python interpreter used to build STAT.
+some systems use `lib64`. Use the Python interpreter and runtime environment used to build STAT,
+with its Python and native-library dependencies available.
 
 This directory contains tests under `unit/test_*.py` and some of these require installed STAT
 Python extensions like `_STATmerge`. Check we can import modules and then run these tests from
