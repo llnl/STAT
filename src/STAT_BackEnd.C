@@ -1705,6 +1705,12 @@ StatError_t STAT_BackEnd::resume()
         for (processMapIter = processMap_.begin(); processMapIter != processMap_.end(); processMapIter++)
             resumeProcess(processMapIter->second);
     }
+    // Clear any stop left by LaunchMON's SIGSTOP after Dyninst resumes the rank.
+    for (int i = 0; i < proctabSize_; i++)
+    {
+        if (kill(proctab_[i].pid, SIGCONT) == -1 && errno != ESRCH)
+            printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to SIGCONT native target pid %d after resume: %s\n", proctab_[i].pid, strerror(errno));
+    }
     isRunning_ = true;
 
     return STAT_OK;
@@ -3289,6 +3295,21 @@ StatError_t STAT_BackEnd::detach(unsigned int *stopArray, int stopArrayLen)
         }
         processMap_.clear();
         processMapNonNull_ = 0;
+    }
+    // Continue rank processes after detach, except those explicitly requested to remain stopped.
+    for (int i = 0; i < proctabSize_; i++)
+    {
+        leaveStopped = false;
+        for (int j = 0; j < stopArrayLen; j++)
+        {
+            if (stopArray[j] == proctab_[i].mpirank)
+            {
+                leaveStopped = true;
+                break;
+            }
+        }
+        if (!leaveStopped && kill(proctab_[i].pid, SIGCONT) == -1 && errno != ESRCH)
+            printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to SIGCONT native target pid %d after detach: %s\n", proctab_[i].pid, strerror(errno));
     }
     return STAT_OK;
 }
