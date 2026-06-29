@@ -25,6 +25,7 @@ __version_minor__ = 2
 __version_revision__ = 3
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
+import codecs
 import string
 import sys
 import shutil
@@ -392,6 +393,38 @@ def get_cache_file_path(file_dir, source):
     cache_directory_path = os.path.abspath(os.path.join(file_dir, cache_directory))
     cache_file_path = cache_directory_path + '/' + source
     return cache_file_path
+
+
+BINARY_SOURCE_EXTENSIONS = (".a", ".o", ".pyc", ".so")
+
+
+def is_binary_source_path(source):
+    """Check for binary/object filename extensions without opening the file."""
+    basename = os.path.basename(source).lower()
+    extension = os.path.splitext(basename)[1]
+    if extension in BINARY_SOURCE_EXTENSIONS:
+        return True
+    # Versioned libraries have numeric suffixes; names such as module.so.py do not.
+    return re.search(r"\.so(?:\.\d+)+$", basename) is not None
+
+
+def is_binary_file(filename):
+    """Check a 4096-byte sample for NUL bytes or invalid UTF-8.
+
+    This is a bounded heuristic; the subsequent full read can still fail.
+    """
+    sample_size = 4096
+    with open(filename, "rb") as file:
+        data = file.read(sample_size)
+    if b"\0" in data:
+        return True
+    try:
+        # A full sample may end partway through a valid UTF-8 character.
+        decoder = codecs.getincrementaldecoder("utf-8")()
+        decoder.decode(data, final=len(data) < sample_size)
+    except UnicodeDecodeError:
+        return True
+    return False
 
 
 ## \param current_graph - the currently opened graph object
@@ -1378,6 +1411,10 @@ class STATGraph(xdot_ui_elements.Graph):
 
         source = node.attrs["source"].split('\\n')[item]
         cur_line_num = int(node.attrs["line"].split('\\n')[item].strip(":"))
+        # Reject known binary names before locating the file.
+        if is_binary_source_path(source):
+            show_error_dialog('Cannot view "%s" as source: it appears to be a binary file.' % source)
+            return True
 
         # get the node font and background colors
         for shape in node.shapes:
@@ -1433,6 +1470,15 @@ class STATGraph(xdot_ui_elements.Graph):
                 if source_full_path is None:
                     show_error_dialog('%sFailed to find file "%s" in search paths.  Please add the source file search path for this file\n' % (error_msg, source))
                     return True
+
+        # Other filenames may still contain binary data.
+        try:
+            if is_binary_file(source_full_path):
+                show_error_dialog('Cannot view "%s" as source: it appears to be a binary file.' % source_full_path)
+                return True
+        except IOError as e:
+            show_error_dialog('%s\nFailed to open file "%s"\n' % (repr(e), source_full_path), exception=e)
+            return True
 
         # create the source view window
         if self.source_view_window is None:
@@ -1496,8 +1542,10 @@ class STATGraph(xdot_ui_elements.Graph):
                     lines = file.readlines()
         except IOError as e:
             show_error_dialog('%s\nFailed to open file "%s"\n' % (repr(e), source_full_path), exception=e)
+            return True
         except Exception as e:
             show_error_dialog('%s\nFailed to process source file "%s"\n' % (repr(e), source_full_path), exception=e)
+            return True
         width = len(str(len(lines)))
         cur_line_iter = source_view.get_buffer().get_iter_at_offset(0)
         cur_line_mark = source_view.get_buffer().create_mark('cur_line', cur_line_iter, True)
