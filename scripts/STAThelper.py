@@ -613,9 +613,8 @@ def translate(match):
     return trans.translate(offset)
 
 def exec_and_exit(arg_list):
-    """Run a command and exits."""
-    subprocess.call(arg_list)
-    sys.exit(0)
+    """Run a command and preserve its exit status."""
+    sys.exit(subprocess.call(arg_list))
 
 
 #global DEBUG
