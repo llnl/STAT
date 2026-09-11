@@ -418,9 +418,6 @@ host[1-10,12,15-20];otherhost[30]
                 self.options['PID'] = int(args.attach.split(':')[-1])
                 if args.attach.find(':') != -1:
                     self.options['Remote Host'] = args.attach.split(':')[0]
-                if HAVE_GDB_SUPPORT:
-                    if args.gdb is not None:
-                        self.options['GDB BE'] = True
                 stat_wait_dialog.show_wait_dialog_and_run(self.attach_cb, (None, False, False, STAT_ATTACH), self.attach_task_list)
                 return
             elif args.serial is not None:
