@@ -64,7 +64,7 @@ int main(int argc, char **argv)
     StatError_t statError;
     StatBenchArgs_t *statBenchArgs;
 
-    statFrontEnd = new STAT_FrontEnd();
+    statFrontEnd = STAT_FrontEnd::make();
 
     /* Set default values */
     statBenchArgs = (StatBenchArgs_t *)calloc(1, sizeof(StatBenchArgs_t));
@@ -410,7 +410,10 @@ StatError_t parseArgs(StatBenchArgs_t *statBenchArgs, STAT_FrontEnd *statFrontEn
     }
 
     if (statFrontEnd->getLauncherArgc() == 1)
+    {
         statFrontEnd->addLauncherArgv("srun");
+        statFrontEnd->addLauncherArgv("--overlap");
+    }
     statFrontEnd->addLauncherArgv(statFrontEnd->getToolDaemonExe());
     statFrontEnd->addLauncherArgv("--STATBench");
     if (logType & STAT_LOG_BE)
