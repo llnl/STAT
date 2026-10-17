@@ -142,6 +142,14 @@ unsigned int statSerializeNodeLength(const void *node);
 */
 void statDeserializeNode(void **node, const char *buf, unsigned int bufLength);
 
+//! Escape raw text for use inside a quoted DOT value.
+/*!
+    \param value - unescaped text; quotes, backslashes and line breaks are escaped
+    \param recordLabel - also escape <, >, {, }, and | so they appear as literal label text
+    \return escaped text without surrounding quotation marks
+*/
+std::string statEscapeDotString(const std::string &value, bool recordLabel);
+
 //! Translate the STAT node object into a string
 /*!
     \param node - a pointer to the node object
