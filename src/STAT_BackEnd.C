@@ -2523,6 +2523,10 @@ StatError_t STAT_BackEnd::getStackTrace(Walker *proc, int rank, unsigned int nRe
                 if (sampleType_ & STAT_SAMPLE_OPENMP)
                     ompWalker = new OpenMPStackWalker(proc);
 #endif
+                // Thread tracking is disabled; include workers created since attach.
+                if (pDebug->getProc()->getLWPTracking()
+                    && !pDebug->getProc()->getLWPTracking()->refreshLWPs())
+                    printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to refresh threads for rank %d\n", rank);
                 boolRet = proc->getAvailableThreads(threads);
                 if (boolRet != true)
                 {
