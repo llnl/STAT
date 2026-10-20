@@ -1,7 +1,87 @@
 #include "STAT_lmonBackEnd.h"
 
+#include <netdb.h>
+
 using namespace std;
 using namespace MRN;
+
+namespace
+{
+string shortHostName(const string &hostName)
+{
+    string::size_type dot = hostName.find('.');
+    return hostName.substr(0, dot);
+}
+
+bool isIpAddress(const string &hostName)
+{
+    struct in_addr ipv4;
+    struct in6_addr ipv6;
+    return inet_pton(AF_INET, hostName.c_str(), &ipv4) == 1 ||
+           inet_pton(AF_INET6, hostName.c_str(), &ipv6) == 1;
+}
+
+/*
+ * Match the local host to its MRNet connection entry. MRNet's configured name
+ * handling can preserve different forms, e.g. gpu01 and gpu01.cluster.example,
+ * while aliases can normalize to different names for the same node.
+ */
+bool hostNameMatches(const char *localHostName, const char *localIp,
+                     const char *leafHostName)
+{
+    string local = localHostName == NULL ? "" : localHostName;
+    string leaf = leafHostName == NULL ? "" : leafHostName;
+    string prettyLocal, prettyLeaf;
+    struct addrinfo hints, *addresses = NULL, *address;
+    char resolvedIp[INET6_ADDRSTRLEN];
+
+    if (local.empty() || leaf.empty())
+        return false;
+    if (local == leaf)
+        return true;
+
+    // Match short/FQDN forms directly, e.g. gpu01 and gpu01.cluster.example.
+    if (!isIpAddress(local) && !isIpAddress(leaf) &&
+        shortHostName(local) == shortHostName(leaf))
+        return true;
+
+    // Retain MRNet's configured hostname normalization for other name forms.
+    XPlat::NetUtils::GetHostName(local, prettyLocal);
+    XPlat::NetUtils::GetHostName(leaf, prettyLeaf);
+    if (!prettyLocal.empty() && prettyLocal == prettyLeaf)
+        return true;
+
+    if (localIp == NULL || localIp[0] == '\0')
+        return false;
+
+    // Resolve leaf aliases, e.g. gpu01 and gpu01-ib sharing the local IP.
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(leaf.c_str(), NULL, &hints, &addresses) != 0)
+        return false;
+
+    for (address = addresses; address != NULL; address = address->ai_next)
+    {
+        const void *binaryAddress = NULL;
+        if (address->ai_family == AF_INET)
+            binaryAddress = &((struct sockaddr_in *)address->ai_addr)->sin_addr;
+        else if (address->ai_family == AF_INET6)
+            binaryAddress = &((struct sockaddr_in6 *)address->ai_addr)->sin6_addr;
+        if (binaryAddress != NULL &&
+            inet_ntop(address->ai_family, binaryAddress, resolvedIp,
+                      sizeof(resolvedIp)) != NULL &&
+            strcmp(resolvedIp, localIp) == 0)
+        {
+            freeaddrinfo(addresses);
+            return true;
+        }
+    }
+
+    freeaddrinfo(addresses);
+    return false;
+}
+}
 
 STAT_lmonBackEnd::STAT_lmonBackEnd(StatDaemonLaunch_t launchType)
     : STAT_BackEnd(launchType)
@@ -124,7 +204,7 @@ StatError_t STAT_lmonBackEnd::connect(int argc, char **argv)
     bool found;
     char *param[6], parentPort[BUFSIZE], parentRank[BUFSIZE], myRank[BUFSIZE];
     pid_t pid;
-    string prettyHost, leafPrettyHost;
+    string leafHosts;
     StatBackEndProcInfo_t *oldProctab, *newProctab;
     lmon_rc_e lmonRet;
     StatLeafInfoArray_t leafInfoArray;
@@ -179,11 +259,12 @@ StatError_t STAT_lmonBackEnd::connect(int argc, char **argv)
         /* Find my MRNet personality  */
         printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Searching for my connection information\n");
         found = false;
-        XPlat::NetUtils::GetHostName(localHostName_, prettyHost);
         for (k = 0; k < leafInfoArray.size; k++)
         {
-            XPlat::NetUtils::GetHostName(string(leafInfoArray.leaves[k].hostName), leafPrettyHost);
-            if (prettyHost == leafPrettyHost || strcmp(leafPrettyHost.c_str(), localIp_) == 0)
+            if (!leafHosts.empty())
+                leafHosts += ",";
+            leafHosts += leafInfoArray.leaves[k].hostName;
+            if (hostNameMatches(localHostName_, localIp_, leafInfoArray.leaves[k].hostName))
             {
                 found = true;
                 parentHostName_ = strdup(leafInfoArray.leaves[k].parentHostName);
@@ -200,7 +281,9 @@ StatError_t STAT_lmonBackEnd::connect(int argc, char **argv)
         }
         if (found == false)
         {
-            printMsg(STAT_MRNET_ERROR, __FILE__, __LINE__, "Failed to find MRNet parent info\n");
+            printMsg(STAT_MRNET_ERROR, __FILE__, __LINE__,
+                     "Failed to find MRNet parent info for local host %s (%s); leaf hosts: %s\n",
+                     localHostName_, localIp_, leafHosts.c_str());
             return STAT_MRNET_ERROR;
         }
 
@@ -341,7 +424,6 @@ StatError_t STAT_lmonBackEnd::statBenchConnectInfoDump()
     int i, count, intRet, fd;
     unsigned int bytesWritten, j;
     char fileName[BUFSIZE], data[BUFSIZE], *ptr = NULL;
-    string prettyHost, leafPrettyHost;
     lmon_rc_e lmonRet;
     StatLeafInfoArray_t leafInfoArray;
 
@@ -388,9 +470,7 @@ StatError_t STAT_lmonBackEnd::statBenchConnectInfoDump()
     /* Find MRNet personalities for all STATBench Daemons on this node */
     for (j = 0, count = -1; j < leafInfoArray.size; j++)
     {
-        XPlat::NetUtils::GetHostName(localHostName_, prettyHost);
-        XPlat::NetUtils::GetHostName(string(leafInfoArray.leaves[j].hostName), leafPrettyHost);
-        if (prettyHost == leafPrettyHost)
+        if (hostNameMatches(localHostName_, localIp_, leafInfoArray.leaves[j].hostName))
         {
             count++;
             if (count >= proctabSize_)
