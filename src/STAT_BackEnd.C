@@ -1864,12 +1864,14 @@ StatError_t STAT_BackEnd::getSourceLine(Walker *proc, Address addr, char *outBuf
     if (boolRet == false)
     {
         snprintf(outBuf, BUFSIZE, "?");
+        Symtab::closeSymtab(symtab);
         return STAT_OK;
     }
 
-
     snprintf(outBuf, BUFSIZE, "%s", lines[0]->getFile().c_str());
     *lineNum = lines[0]->getLine();
+    // Release the per-frame reference; Dyninst does not cache /proc paths.
+    Symtab::closeSymtab(symtab);
     //printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "address %lx resolved to %s:%d\n", addr, outBuf, *lineNum);
 
     return STAT_OK;
