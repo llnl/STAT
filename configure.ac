@@ -26,6 +26,13 @@ X_AC_GDB
 X_AC_TEMPORALORDERINGAPI
 X_AC_PYTHON
 AM_PATH_PYTHON
+# Resolve Python prefix references without expanding ${prefix} or ${exec_prefix}.
+case $pythondir in
+  '${PYTHON_PREFIX}'*) pythondir="$PYTHON_PREFIX${pythondir#'${PYTHON_PREFIX}'}" ;;
+esac
+case $pyexecdir in
+  '${PYTHON_EXEC_PREFIX}'*) pyexecdir="$PYTHON_EXEC_PREFIX${pyexecdir#'${PYTHON_EXEC_PREFIX}'}" ;;
+esac
 X_AC_GUI
 X_AC_BOOST
 X_AC_ARCH
