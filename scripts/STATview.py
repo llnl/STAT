@@ -809,10 +809,10 @@ class STATCompoundShape(xdot_ui_elements.CompoundShape):
         xdot_ui_elements.CompoundShape.__init__(self, shapes)
         self.hide = False
 
-    def draw(self, cr, highlight=False):
-        """Draw the compound shape if not hidden.
+    def _set_hidden_alpha(self):
+        """Set the alpha values for hidden and visible shapes.
 
-        Hidden shapes are not completely hidden, rather they are made opaque.
+        Hidden shapes are not completely hidden; they are made translucent.
         """
         a_val = 1.0
         if self.hide is True:
@@ -824,7 +824,17 @@ class STATCompoundShape(xdot_ui_elements.CompoundShape):
             color = shape.pen.fillcolor
             r, g, b, p = color
             shape.pen.fillcolor = (r, g, b, a_val)
+
+    # Older xdot calls draw(); newer xdot calls _draw() directly.
+    def draw(self, cr, highlight=False):
+        """Draw using the legacy xdot API."""
+        self._set_hidden_alpha()
         xdot_ui_elements.CompoundShape.draw(self, cr, highlight)
+
+    def _draw(self, cr, highlight=False, bounding=None):
+        """Draw using the modern xdot API."""
+        self._set_hidden_alpha()
+        xdot_ui_elements.CompoundShape._draw(self, cr, highlight, bounding)
 
 
 ## A new object to gather the edge label.
@@ -868,7 +878,7 @@ class STATElement(STATCompoundShape):
         """Get the label (should be overloaded by derrived class)."""
         return None
 
-    def get_jump(self, x, y):
+    def get_jump(self, x, y, to_dst=False):
         """Get the jump (should be overloaded by derrived class)."""
         return None
 
@@ -905,6 +915,7 @@ class STATNode(STATElement):
         except:
             pass
         self.attrs["label"] = label
+        self.tooltip = self.attrs.get("tooltip")
         self.source_dir = None
         self.edge_label = None
         self.edge_label_id = -2
@@ -960,7 +971,7 @@ class STATNode(STATElement):
             return EdgeLabel(self, self.edge_label)
         return None
 
-    def get_jump(self, x, y):
+    def get_jump(self, x, y, to_dst=False):
         """Get the jump object if specified coordintes are in the node."""
         if self.hide is True:
             return None
@@ -1101,7 +1112,7 @@ class STATEdge(STATElement):
             ret += "\tattrs[%s] = %s\n" % (key, self.attrs[key])
         return ret
 
-    def get_jump(self, x, y):
+    def get_jump(self, x, y, to_dst=False):
         """Get the jump object if specified coordintes are in the edge."""
         if xdot_ui_elements.square_distance(x, y, *self.points[0]) <= self.RADIUS*self.RADIUS:
             return xdot_ui_elements.Jump(self, self.dst.x, self.dst.y, highlight=set([self, self.dst]))
@@ -3097,14 +3108,18 @@ class STATDotWidget(xdot_ui_window.DotWidget):
         return xdot_ui_window.DotWidget.on_area_scroll_event(self, area, event)
 
     def on_key_press_event(self, widget, event):
-        if event.keyval in (gtk.keysyms.Page_Up, gtk.keysyms.plus, gtk.keysyms.equal, gtk.keysyms.KP_Add, gtk.keysyms.Page_Down, gtk.keysyms.minus, gtk.keysyms.KP_Subtract, gtk.keysyms.Left, gtk.keysyms.Right, gtk.keysyms.Up, gtk.keysyms.Down):
+        # GDK name lookup works with both PyGTK 2 and introspected GTK 3.
+        keyval = gtk.gdk.keyval_from_name
+        if event.keyval in tuple(keyval(name) for name in (
+                'Page_Up', 'plus', 'equal', 'KP_Add', 'Page_Down', 'minus',
+                'KP_Subtract', 'Left', 'Right', 'Up', 'Down')):
             self.user_zoom = True
-        if event.keyval == gtk.keysyms.r:
+        if event.keyval == keyval('r'):
             global window
             window.on_toolbar_action(None, 'Reset', self.graph.on_original_graph, (widget,))
             return
         ret = xdot_ui_window.DotWidget.on_key_press_event(self, widget, event)
-        if event.keyval == gtk.keysyms.r:
+        if event.keyval == keyval('r'):
             self.user_zoom = False
             self.zoom_to_fit()
         return ret
