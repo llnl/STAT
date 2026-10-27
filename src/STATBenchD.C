@@ -36,8 +36,12 @@ int main(int argc, char **argv)
     char logOutDir[BUFSIZE];
     STAT_BackEnd *statBackEnd;
     StatError_t statError;
+#ifdef USE_CTI	
+    StatDaemonLaunch_t launchType = STATD_CTI_LAUNCH;
+#else	
     StatDaemonLaunch_t launchType = STATD_LMON_LAUNCH;
-
+#endif
+	
     struct option longOptions[] =
     {
         {"mrnetprintf",         no_argument,        0, 'm'},

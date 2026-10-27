@@ -142,6 +142,7 @@ typedef enum {
                STAT_TERMINATE_ERROR,
                STAT_FILE_ERROR,
                STAT_LMON_ERROR,
+               STAT_CTI_ERROR,
                STAT_ARG_ERROR,
                STAT_VERSION_ERROR,
                STAT_NOT_LAUNCHED_ERROR,

@@ -207,15 +207,9 @@ STAT_FrontEnd::STAT_FrontEnd()
     statInitializeMergeFunctions();
 
     /* Get the FE hostname */
-    string temp;
-    intRet = XPlat::NetUtils::GetLocalHostName(temp);
-    if (intRet == 0)
-        snprintf(hostname_, BUFSIZE, "%s", temp.c_str());
-    else
-    {
-        intRet = gethostname(hostname_, BUFSIZE);
-        if (intRet != 0)
-            printMsg(STAT_WARNING, __FILE__, __LINE__, "gethostname failed with error code %d\n", intRet);
+    intRet = gethostname(hostname_, BUFSIZE);
+    if (intRet != 0) {
+        printMsg(STAT_WARNING, __FILE__, __LINE__, "gethostname failed with error code %d\n", intRet);
     }
 
     /* Initialize variables */
@@ -234,7 +228,7 @@ STAT_FrontEnd::STAT_FrontEnd()
     launcherArgc_ = 1;
     topologySize_ = 0;
     logging_ = 0;
-    jobId_ = NULL;
+    jobId_ = 0;
     launcherArgv_ = NULL;
     applExe_ = NULL;
     remoteNode_ = NULL;
@@ -755,7 +749,7 @@ StatError_t STAT_FrontEnd::connectMrnetTree(bool blocking)
         sConnectAttempt = sConnectAttempt + 1;
         if (daemonsHaveExited())
         {
-            printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+            printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
             return STAT_DAEMON_ERROR;
         }
         if (sConnectAttempt < sConnectTimeout * 100)
@@ -773,7 +767,7 @@ StatError_t STAT_FrontEnd::connectMrnetTree(bool blocking)
         {
             if (daemonsHaveExited())
             {
-                printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+                printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
                 return STAT_DAEMON_ERROR;
             }
             if (gNumCallbacks == nApplNodes_ * nDaemonsPerNode_)
@@ -862,7 +856,8 @@ StatError_t STAT_FrontEnd::setupConnectedMrnetTree()
     }
 
     /* Send an initial message using the broadcast stream */
-    if (broadcastStream_->send(PROT_SEND_BROADCAST_STREAM, "%uc %s %d", logging_, logOutDir_, mrnetOutputLevel_) == -1)
+    if (broadcastStream_->send(PROT_SEND_BROADCAST_STREAM, "%uc %s %d %d", logging_, logOutDir_, mrnetOutputLevel_,
+        (haveGlobalRanks()) ? 1 : 0) == -1)
     {
         printMsg(STAT_MRNET_ERROR, __FILE__, __LINE__, "failed to send on broadcast stream\n");
         return STAT_MRNET_ERROR;
@@ -1369,7 +1364,7 @@ StatError_t STAT_FrontEnd::receiveAck(bool blocking)
         {
             if (daemonsHaveExited())
             {
-                printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+                printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
                 isPendingAck_ = false;
                 return STAT_DAEMON_ERROR;
             }
@@ -1392,7 +1387,7 @@ StatError_t STAT_FrontEnd::receiveAck(bool blocking)
         {
             if (daemonsHaveExited())
             {
-                printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+                printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
                 isPendingAck_ = false;
                 return STAT_DAEMON_ERROR;
             }
@@ -2195,7 +2190,7 @@ StatError_t STAT_FrontEnd::checkVersion()
         {
             if (daemonsHaveExited())
             {
-                printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+                printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
                 return STAT_DAEMON_ERROR;
             }
             usleep(1000);
@@ -2265,12 +2260,12 @@ StatError_t STAT_FrontEnd::attachApplication(bool blocking)
     }
     if (isKilled())
     {
-        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, "LMON detected the application has exited\n");
+        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, appExitedMsg());
         return STAT_APPLICATION_EXITED;
     }
     if (daemonsHaveExited())
     {
-        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
         return STAT_DAEMON_ERROR;
     }
 
@@ -2343,12 +2338,12 @@ StatError_t STAT_FrontEnd::pause(bool blocking)
     }
     if (isKilled())
     {
-        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, "LMON detected the application has exited\n");
+        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, appExitedMsg());
         return STAT_APPLICATION_EXITED;
     }
     if (daemonsHaveExited())
     {
-        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
         return STAT_DAEMON_ERROR;
     }
 
@@ -2419,12 +2414,12 @@ StatError_t STAT_FrontEnd::resume(bool blocking)
     }
     if (isKilled())
     {
-        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, "LMON detected the application has exited\n");
+        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, appExitedMsg());
         return STAT_APPLICATION_EXITED;
     }
     if (daemonsHaveExited())
     {
-        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
         return STAT_DAEMON_ERROR;
     }
 
@@ -2494,12 +2489,12 @@ StatError_t STAT_FrontEnd::sampleStackTraces(unsigned int sampleType, unsigned i
     }
     if (isKilled())
     {
-        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, "LMON detected the application has exited\n");
+        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, appExitedMsg());
         return STAT_APPLICATION_EXITED;
     }
     if (daemonsHaveExited())
     {
-        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
         return STAT_DAEMON_ERROR;
     }
 
@@ -2600,7 +2595,7 @@ StatError_t STAT_FrontEnd::gatherImpl(StatProt_t type, bool blocking)
     }
     if (daemonsHaveExited())
     {
-        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
         return STAT_DAEMON_ERROR;
     }
 
@@ -2665,7 +2660,7 @@ StatError_t STAT_FrontEnd::receiveStackTraces(bool blocking)
         {
             if (daemonsHaveExited())
             {
-                printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+                printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
                 return STAT_DAEMON_ERROR;
             }
             if (blocking == true)
@@ -2756,10 +2751,15 @@ StatError_t STAT_FrontEnd::receiveStackTraces(bool blocking)
         for (ranksIter = remapRanksList_.begin(); ranksIter != remapRanksList_.end(); ranksIter++)
         {
             /* Fill edge labels for this daemon */
-            hostRanks = mrnetRankToMpiRanksMap_[*ranksIter];
-            gStatGraphRoutinesRanksList = hostRanks->list;
-            gStatGraphRoutinesRanksListLength = hostRanks->count;
-            gStatGraphRoutinesCurrentIndex = offset;
+            if (!haveGlobalRanks()) {
+                hostRanks = mrnetRankToMpiRanksMap_[*ranksIter];
+                gStatGraphRoutinesRanksList = hostRanks->list;
+                gStatGraphRoutinesRanksListLength = hostRanks->count;
+                gStatGraphRoutinesCurrentIndex = offset;
+            } else {
+                hostRanks = nullptr;
+                gStatGraphRoutinesRanksList = nullptr;
+            }
             graphlibError = graphlib_mergeGraphs(sortedStackTraces, stackTraces);
             if (GRL_IS_FATALERROR(graphlibError))
             {
@@ -2768,7 +2768,9 @@ StatError_t STAT_FrontEnd::receiveStackTraces(bool blocking)
             }
 
             /* update offset, round up to the nearest bit vector count*/
-            offset += statBitVectorLength(hostRanks->count);
+            if (hostRanks != nullptr) {
+                offset += statBitVectorLength(hostRanks->count);
+            }
         }
 
         gEndTime.setTime();
@@ -3023,12 +3025,12 @@ char *STAT_FrontEnd::getNodeInEdge(int nodeId)
     }
     if (isKilled())
     {
-        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, "LMON detected the application has exited\n");
+        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, appExitedMsg());
         return NULL;
     }
     if (daemonsHaveExited())
     {
-        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
         return NULL;
     }
 
@@ -3065,7 +3067,7 @@ char *STAT_FrontEnd::getNodeInEdge(int nodeId)
             {
                 if (daemonsHaveExited())
                 {
-                    printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+                    printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
                     return NULL;
                 }
                 usleep(1000);
@@ -3108,15 +3110,19 @@ char *STAT_FrontEnd::getNodeInEdge(int nodeId)
         /* Fill edge label on a per daemon basis */
         printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Filling in edges\n");
         offset = 0;
-        for (ranksIter = remapRanksList_.begin(); ranksIter != remapRanksList_.end(); ranksIter++)
-        {
-            /* Fill edge labels for this daemon */
-            hostRanks = mrnetRankToMpiRanksMap_[*ranksIter];
-            gStatGraphRoutinesRanksList = hostRanks->list;
-            gStatGraphRoutinesRanksListLength = hostRanks->count;
-            gStatGraphRoutinesCurrentIndex = offset;
+        if (!haveGlobalRanks()) {
+            for (ranksIter = remapRanksList_.begin(); ranksIter != remapRanksList_.end(); ranksIter++)
+            {
+                /* Fill edge labels for this daemon */
+                hostRanks = mrnetRankToMpiRanksMap_[*ranksIter];
+                gStatGraphRoutinesRanksList = hostRanks->list;
+                gStatGraphRoutinesRanksListLength = hostRanks->count;
+                gStatGraphRoutinesCurrentIndex = offset;
+                statMergeEdgeOrdered(orderedEdge, unorderedEdge);
+                offset += statBitVectorLength(hostRanks->count);
+            }
+        } else {
             statMergeEdgeOrdered(orderedEdge, unorderedEdge);
-            offset += statBitVectorLength(hostRanks->count);
         }
         statFreeEdge((void *)unorderedEdge);
     }
@@ -3311,14 +3317,14 @@ StatError_t STAT_FrontEnd::detachApplication(int *stopList, int stopListSize, bo
     if (isKilled())
     {
 #ifndef DYSECTAPI
-        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, "LMON detected the application has exited\n");
+        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, appExitedMsg());
         return STAT_APPLICATION_EXITED;
 #endif
     }
     if (daemonsHaveExited())
     {
 #ifndef DYSECTAPI
-        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
 #endif
         return STAT_DAEMON_ERROR;
     }
@@ -3481,12 +3487,12 @@ StatError_t STAT_FrontEnd::terminateApplication(bool blocking)
     }
     if (isKilled())
     {
-        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, "LMON detected the application has exited\n");
+        printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, appExitedMsg());
         return STAT_APPLICATION_EXITED;
     }
     if (daemonsHaveExited())
     {
-        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+        printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
         return STAT_DAEMON_ERROR;
     }
 
@@ -4370,12 +4376,12 @@ StatError_t STAT_FrontEnd::statBenchCreateStackTraces(unsigned int maxDepth, uns
         {
             if (isKilled())
             {
-                printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, "LMON detected the application has exited\n");
+                printMsg(STAT_APPLICATION_EXITED, __FILE__, __LINE__, appExitedMsg());
                 return STAT_APPLICATION_EXITED;
             }
             if (daemonsHaveExited())
             {
-                printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "LMON detected the daemons have exited\n");
+                printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, daemonExitedMsg());
                 return STAT_DAEMON_ERROR;
             }
             usleep(1000);

@@ -87,6 +87,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 //! An enum type to determine who launched the daemon
 typedef enum {
     STATD_LMON_LAUNCH = 0,
+    STATD_CTI_LAUNCH,
     STATD_SERIAL_LAUNCH,
     STATD_MRNET_LAUNCH,
 } StatDaemonLaunch_t;
@@ -583,6 +584,7 @@ class STAT_BackEnd
         /****************/
 
         int proctabSize_;               /*!< the size of the process table */
+        int maxRank_;                   /*!< the largest rank on this node */
         int processMapNonNull_;         /*!< the number of active processes */
         unsigned int logType_;          /*!< the logging level */
         unsigned int nDaemonsPerNode_;  /*!< the number of daemons per node */

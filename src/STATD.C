@@ -35,7 +35,11 @@ int main(int argc, char **argv)
     char logOutDir[BUFSIZE];
     string invocationString;
     vector<string> serialProcesses;
+#ifdef USE_CTI	
+    StatDaemonLaunch_t launchType = STATD_CTI_LAUNCH;
+#else
     StatDaemonLaunch_t launchType = STATD_LMON_LAUNCH;
+#endif	
     StatError_t statError;
     STAT_BackEnd *statBackEnd;
 

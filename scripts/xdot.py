@@ -1507,6 +1507,8 @@ class DotWidget(gtk.DrawingArea):
         self.drag_action = NullAction(self)
         self.presstime = None
         self.highlight = None
+        self.pressx = None
+        self.pressy = None
 
     def set_filter(self, filter):
         self.filter = filter

@@ -45,10 +45,16 @@ STATD_SOURCES = STATD.C STAT.h STAT_BackEnd.h STAT_GraphRoutines.h
 STATbin_LDADD = libstatfe.la @FELIBS@
 STATD_LDADD = libstatbe.la @BELIBS@
 
+stat_be_la_sources_base = STAT_BackEnd.C STAT_BackEnd.h STAT.h STAT_timer.h STAT_timer.C STAT_CircularLogs.C
+stat_fe_la_sources_base = STAT_FrontEnd.C STAT_FrontEnd.h STAT.h STAT_timer.h STAT_timer.C
 
-stat_be_la_sources_base = STAT_BackEnd.C STAT_BackEnd.h STAT_lmonBackEnd.C STAT_lmonBackEnd.h STAT.h STAT_timer.h STAT_timer.C STAT_CircularLogs.C
-stat_fe_la_sources_base = STAT_FrontEnd.C STAT_lmonFrontEnd.C STAT_FrontEnd.h  STAT_lmonFrontEnd.h STAT.h STAT_timer.h STAT_timer.C
-
+if WITH_CTI
+stat_be_la_sources_base += STAT_ctiBackEnd.C STAT_ctiBackEnd.h
+stat_fe_la_sources_base += STAT_ctiFrontEnd.h STAT_ctiFrontEnd.C
+else
+stat_be_la_sources_base += STAT_lmonBackEnd.C STAT_lmonBackEnd.h
+stat_fe_la_sources_base += STAT_lmonFrontEnd.h STAT_lmonFrontEnd.C
+endif
 
 libstatbe_la_SOURCES = $(stat_be_la_sources_base) $(stat_graphlib_sources) $(stat_be_la_sources_fgfs)
 libstatfe_la_SOURCES = $(stat_fe_la_sources_base) $(stat_graphlib_sources) 

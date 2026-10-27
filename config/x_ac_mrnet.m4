@@ -13,6 +13,16 @@ AC_DEFUN([X_AC_MRNET], [
       MRNETPREFIX=""
     ]
   )
+  AC_ARG_WITH(extra-mrnet-rpath,
+    [AS_HELP_STRING([--with-extra-mrnet-rpath=path],
+      [Add additional rpath fro mrnet]
+    )],
+    [RPATH_FLAGS="$RPATH_FLAGS -Wl,-rpath=${withval}"],
+    []
+  )
+  AC_MSG_CHECKING([setting the RPATH_FLAGS for mrnet])
+  AC_MSG_RESULT([$RPATH_FLAGS])
+
   mrn_incs=`ls -d $MRNETPREFIX/lib/*/include` 
   for mrn_inc in $mrn_incs
   do
@@ -66,7 +76,7 @@ AC_DEFUN([X_AC_MRNET], [
     AC_MSG_ERROR([libmrnet is required.  Specify libmrnet prefix with --with-mrnet])
   fi
   AC_LANG_POP(C++)
-  AC_PATH_PROG([MRNETCOMMNODEBIN], [mrnet_commnode], [no], [$MRNETPREFIX/bin$PATH_SEPARATOR$PATH])
+  AC_PATH_PROG([MRNETCOMMNODEBIN], [mrnet_commnode], [no], [$MRNETPREFIX/bin$PATH_SEPARATOR$MRNETPREFIX/libexec$PATH_SEPARATOR$PATH])
   if test $MRNETCOMMNODEBIN = no; then
     AC_MSG_ERROR([the mrnet_commnode executable is required.  Specify mrnet prefix with --with-mrnet])
   fi

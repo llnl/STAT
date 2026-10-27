@@ -59,7 +59,11 @@ const char *statMerge_format_string = "%Ac %d %d %ud";
 const char *STAT_checkVersion_format_string = "%d %d %d %d %d";
 
 //! The MRNet format string for the STAT filter initialization
-const char *filterInit_format_string = "%uc %s %d";
+const char *filterInit_format_string = "%uc %s %d %d";
+
+//! Whether the ranks sent are global, or local to node
+//! If local, needs offset applied.
+bool gHaveGlobalRanks = false;
 
 //! Global variable for file pointer
 FILE *gStatOutFp = NULL;
@@ -191,7 +195,7 @@ void filterInit(vector<PacketPtr> &inputPackets,
 {
     char *logDir;
     char fileName[BUFSIZE], hostName[BUFSIZE];
-    int intRet, mrnetOutputLevel;
+    int intRet, mrnetOutputLevel, haveGlobalRanks;
     unsigned int i;
     graphlib_error_t graphlibError;
 
@@ -210,8 +214,9 @@ void filterInit(vector<PacketPtr> &inputPackets,
     {
         for (i = 0; i < inputPackets.size(); i++)
         {
-            if (inputPackets[i]->unpack("%uc %s %d", &gLogging, &logDir, &mrnetOutputLevel) == -1)
+            if (inputPackets[i]->unpack("%uc %s %d %d", &gLogging, &logDir, &mrnetOutputLevel, &haveGlobalRanks) == -1)
                 cpPrintMsg(STAT_MRNET_ERROR, __FILE__, __LINE__, "failed to unpack packet\n");
+            gHaveGlobalRanks = (haveGlobalRanks > 0);
             if (topology.get_Network()->is_LocalNodeInternal())
             {
                 if (gLogging & STAT_LOG_CP)
@@ -360,7 +365,7 @@ void statMerge(vector<PacketPtr> &inputPackets,
     {
         currentPacket = inputPackets[childrenOrderIter->second];
         edgeLabelWidths[i] = (*currentPacket)[1]->get_int32_t();
-        totalWidth += edgeLabelWidths[i];
+        totalWidth = std::max(totalWidth, edgeLabelWidths[i]);
     }
 
     if (tag == PROT_SEND_NODE_IN_EDGE_RESP)
@@ -388,7 +393,11 @@ void statMerge(vector<PacketPtr> &inputPackets,
             /* Deserialize edge in packet element [0] */
             byteArray = (char *)((*currentPacket)[0]->get_array(&type, &byteArrayLen));
             gStatGraphRoutinesTotalWidth = totalWidth;
-            gStatGraphRoutinesEdgeLabelWidths = edgeLabelWidths;
+            if (!gHaveGlobalRanks) {
+                gStatGraphRoutinesEdgeLabelWidths = edgeLabelWidths;
+            } else {
+                gStatGraphRoutinesEdgeLabelWidths = nullptr;
+            }
             gStatGraphRoutinesCurrentIndex = rank;
             statFilterDeserializeEdge((void **)&edge, byteArray, byteArrayLen);
             statMergeEdge(retEdge, edge);
@@ -409,6 +418,7 @@ void statMerge(vector<PacketPtr> &inputPackets,
             cpPrintMsg(STAT_GRAPHLIB_ERROR, __FILE__, __LINE__,"%s: Failed to malloc sOutputByteArray\n", strerror(errno));
             return;
         }
+
         statSerializeEdge(sOutputByteArray, retEdge);
         statFreeEdge(retEdge);
     } /* if (tag == PROT_SEND_NODE_IN_EDGE_RESP) */
@@ -433,7 +443,11 @@ void statMerge(vector<PacketPtr> &inputPackets,
             else
             {
                 gStatGraphRoutinesTotalWidth = totalWidth;
-                gStatGraphRoutinesEdgeLabelWidths = edgeLabelWidths;
+                if (!gHaveGlobalRanks) {
+                    gStatGraphRoutinesEdgeLabelWidths = edgeLabelWidths;
+                } else {
+                    gStatGraphRoutinesEdgeLabelWidths = nullptr;
+                }
                 gStatGraphRoutinesCurrentIndex = rank;
                 graphlibError = graphlib_deserializeBasicGraph(&currentGraph, gStatMergeFunctions, byteArray, byteArrayLen);
             }
@@ -444,6 +458,7 @@ void statMerge(vector<PacketPtr> &inputPackets,
             }
 
             graphlibError = graphlib_mergeGraphs(returnGraph, currentGraph);
+
             if (GRL_IS_FATALERROR(graphlibError))
             {
                 cpPrintMsg(STAT_GRAPHLIB_ERROR, __FILE__, __LINE__, "Failed to merge graph %d\n", rank);

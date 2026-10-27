@@ -83,5 +83,14 @@ if test -n "$PYTHONPATH" ; then
 else
     export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
 fi
+if test -n "$STAT_INSTALL_DIR"; then
+     if test -z "$STAT_DAEMON_PATH" ; then
+	export STAT_DAEMON_PATH=$prefix/bin/STATD
+    fi
+    if test -z "$STAT_FILTER_PATH" ; then
+	export STAT_FILTER_PATH=$prefix/lib/STAT_FilterDefinitions.so
+    fi
+    export PATH=$PATH:$prefix/bin
+fi    
 
 exec @STATPYTHON@ @pythondir@/STATmain.py $@

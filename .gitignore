@@ -30,6 +30,7 @@ config/ltmain.sh
 config/ltoptions.m4
 config/ltversion.m4
 config/lt~obsolete.m4
+config/compile
 config/config.guess
 config/config.sub
 config/depcomp
@@ -88,6 +89,7 @@ src/to_wrap.C
 src/tomod.py
 src/dysect/DysectAPI/.deps/
 src/dysect/DysectAPI/.libs/
+src/dysect/DysectAPI/Aggregates/.deps/
 src/dysect/libDysectAPI/src/.deps/
 src/dysect/libDysectAPI/src/.libs/
 src/dysect/libDysectAPI/src/expr-parser.cc

@@ -34,15 +34,14 @@ case $pyexecdir in
   '${PYTHON_EXEC_PREFIX}'*) pyexecdir="$PYTHON_EXEC_PREFIX${pyexecdir#'${PYTHON_EXEC_PREFIX}'}" ;;
 esac
 X_AC_GUI
-X_AC_BOOST
 X_AC_ARCH
+X_AC_BOOST
 X_AC_DEBUGLIBS
 X_AC_GRAPHLIB
-X_AC_LAUNCHMON
-X_AC_RM_COMM
 X_AC_MRNET
 X_AC_FGFS
 X_AC_CALLPATH
+
 
 # Checks for header files.
 AC_HEADER_STDC
@@ -75,6 +74,7 @@ AC_ARG_ENABLE(statbench,
 
 AM_CONDITIONAL([ENABLE_STATBENCH], [test "$WITH_STATBENCH" = yes])
 
+
 AC_ARG_WITH(procspernode,
   [AS_HELP_STRING([--with-procspernode=num],[Set the maximum number of communication processes per node equal to num, defaults to 1 if not specified])],
   [AC_DEFINE_UNQUOTED([STAT_PROCS_PER_NODE], [$withval], [The max number of CPs per node])],
@@ -86,6 +86,34 @@ AC_ARG_WITH(usagelog,
   [CXXFLAGS="$CXXFLAGS -DSTAT_USAGELOG=\\\"${withval}\\\""],
   [CXXFLAGS="$CXXFLAGS"]
 )
+
+AM_CONDITIONAL([WITH_CTI], false)
+
+AC_ARG_WITH(cti,
+	[AS_HELP_STRING([--with-cti],
+		[Location of the common tools interface package]
+		)
+	],
+	[CXXFLAGS="$CXXFLAGS -I${withval}/include"
+	  LDFLAGS="$LDFLAGS -L${withval}/lib"
+	  AM_CONDITIONAL([WITH_CTI], true)
+	  AC_DEFINE([USE_CTI], [], [Use CTI for ALPS and PALS support])
+	  WITH_CTI=yes
+	],	
+	[CXXFLAGS="$CXXFLAGS"
+	 WITH_CTI=no]
+)
+
+
+if test "$WITH_CTI" = "yes"
+then
+  PKG_PROG_PKG_CONFIG
+  PKG_CHECK_MODULES([CRAY_CTI_FE],[common_tools_fe],[],[AC_MSG_ERROR([libcommontools_fe.so not found.])])
+  PKG_CHECK_MODULES([CRAY_CTI_BE],[common_tools_be],[],[AC_MSG_ERROR([libcommontools_be.so not found.])])
+else
+  X_AC_LAUNCHMON
+  X_AC_RM_COMM
+fi
 
 AC_ARG_WITH(alias-suffix,
   [AS_HELP_STRING([--with-alias-suffix=suffix],[drop suffix from the hostname alias])],
@@ -121,9 +149,6 @@ AC_SUBST(BELIBS)
 AC_SUBST(MWLIBS)
 AC_SUBST(MRNETCOMMNODEBIN)
 AC_SUBST(DOTBINDIR)
-AC_SUBST(LAUNCHMONBIN)
-AC_SUBST(NEWLAUNCHMONBIN)
-AC_SUBST(LAUNCHMONPREFIX)
 AC_SUBST(GRAPHLIBPREFIX)
 AC_SUBST(STACKWALKERPREFIX)
 AC_SUBST(DEPCOREPREFIX)

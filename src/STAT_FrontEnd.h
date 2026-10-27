@@ -107,7 +107,7 @@ typedef struct _remap_node
     struct _remap_node **children;
 } RemapNode_t;
 
-//! The statPack function registered to LMON to send data to the daemons
+//! The statPack function registered to send data to the daemons
 /*!
     \param data - the input data
     \param[out] buf - the output buffer
@@ -933,6 +933,10 @@ class STAT_FrontEnd
         StatError_t serveFileRequest(const char *receiveFileName);
 #endif
 
+        virtual bool haveGlobalRanks() = 0;
+
+        virtual const char* daemonExitedMsg() = 0;
+        virtual const char* appExitedMsg() = 0;	
 
         /****************/
         /* Private data */

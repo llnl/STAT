@@ -38,17 +38,13 @@ AC_DEFUN([X_AC_PYTHON], [
   AC_MSG_CHECKING([Python version])
   python_version=`$PYTHON -c "import distutils.sysconfig; \
     print(distutils.sysconfig.get_python_version());"`
-  python_minor_version=`echo $python_version | sed 's/.*\.\(.*\)/\1/'`
-  if test $python_version '>' 2.99 ; then
-    if test $python_minor_version -lt 8 ; then
-      m="m"
-      python_version=$python_version$m
-    else
-      python_version=$python_version
-    fi  
-  else
+  if test $python_version '<' 3.0 ; then
     AM_CONDITIONAL([ENABLE_PYTHON2], true)
   fi
+  if test $python_version '<' 3.9 ; then
+    m="m"
+    python_version=$python_version$m
+  fi 
   AC_MSG_RESULT($python_version)
-  AM_COND_IF([ENABLE_GDB], [BELIBS="-lpython$python_version $BELIBS"], [])
+  BELIBS="-lpython$python_version $BELIBS"
 ])

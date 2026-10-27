@@ -50,6 +50,7 @@ STAT_BackEnd::STAT_BackEnd(StatDaemonLaunch_t launchType) :
 {
     gStatOutFp = NULL;
     proctabSize_ = 0;
+    maxRank_ = 0;
     processMapNonNull_ = 0;
     logType_ = 0;
     parentHostName_ = NULL;
@@ -208,7 +209,7 @@ StatError_t STAT_BackEnd::update3dNodesAndEdges()
     {
         if (edges3d_.find(edgesIter->first) == edges3d_.end())
         {
-            edge = initializeBitVectorEdge(proctabSize_);
+            edge = initializeBitVectorEdge(maxRank_ + 1);
             if (edge == NULL)
             {
                 printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to initialize edge\n");
@@ -275,7 +276,7 @@ StatError_t STAT_BackEnd::update2dEdge(int src, int dst, StatBitVectorEdge_t *ed
 
     if (edges2d_.find(dst) == edges2d_.end())
     {
-        newEdge = initializeBitVectorEdge(proctabSize_);
+        newEdge = initializeBitVectorEdge(maxRank_ + 1);
         if (newEdge == NULL)
         {
             printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to initialize newEdge\n");
@@ -395,6 +396,26 @@ StatError_t STAT_BackEnd::generateGraphs(graphlib_graph_p *prefixTree2d, graphli
             int index;
             map<string, string>::iterator nodeAttrIter;
             nodeAttr.attr_values = (void **)calloc(1, gNumNodeAttrs * sizeof(void *));
+            std::string nodeLabel;
+
+            // Generate the node label from available frame information
+            { auto nodeAttrs = nodeIdToAttrs_[nodesIter->first];
+                if (!nodeAttrs["source"].empty() && !nodeAttrs["line"].empty()) {
+                    nodeLabel = nodeAttrs["source"] + nodeAttrs["line"];
+                } else if (!nodeAttrs["function"].empty()) {
+                    nodeLabel = nodeAttrs["function"];
+                } else if (!nodeAttrs["module"].empty() && !nodeAttrs["offset"].empty()) {
+                    nodeLabel = nodeAttrs["module"] + nodeAttrs["offset"];
+                } else if (!nodeAttrs["pc"].empty()) {
+                    nodeLabel = nodeAttrs["pc"];
+                }
+            }
+
+            if (!nodeLabel.empty()) {
+                // Copied internally when graphlib_addNode invokes statCopyNode
+                nodeAttr.label = (void*)nodeLabel.c_str();
+            }
+
             if (nodeAttr.attr_values == NULL)
             {
                 printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "%s: Error callocing %d nodeAttr.attr_values\n", strerror(errno), gNumNodeAttrs);
@@ -419,11 +440,16 @@ StatError_t STAT_BackEnd::generateGraphs(graphlib_graph_p *prefixTree2d, graphli
                 return STAT_GRAPHLIB_ERROR;
             }
             statFreeNodeAttrs(nodeAttr.attr_values, *currentGraph);
+            nodeAttr.label = (char*)"";
         }
         for (edgesIter = (*edges).begin(); edgesIter != (*edges).end(); edgesIter++)
         {
             int index;
             edgeAttr.attr_values = (void **)calloc(1, gNumEdgeAttrs * sizeof(void *));
+
+            // Edge label will be generated using statEdgeToText
+            edgeAttr.label = edgesIter->second.second;
+
             if (edgeAttr.attr_values == NULL)
             {
                 printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "%s: Error callocing %d edgeAttr.attr_values\n", strerror(errno), gNumEdgeAttrs);
@@ -455,6 +481,7 @@ StatError_t STAT_BackEnd::generateGraphs(graphlib_graph_p *prefixTree2d, graphli
                     continue;
                 }
                 edgeAttr.attr_values[index] = statCopyEdgeAttr(edgeAttrIter->first.c_str(), edgeAttrIter->second);
+
                 edgeAttrIter++;
             }
 
@@ -466,6 +493,7 @@ StatError_t STAT_BackEnd::generateGraphs(graphlib_graph_p *prefixTree2d, graphli
                 return STAT_GRAPHLIB_ERROR;
             }
             statFreeEdgeAttrs(edgeAttr.attr_values, *currentGraph);
+            edgeAttr.label = NULL;
         }
     }
 
@@ -599,7 +627,7 @@ void STAT_BackEnd::onCrash(int sig, siginfo_t *, void *context)
             extern int gStatGraphRoutinesTotalWidth;
             char outFile[BUFSIZE];
 
-            gStatGraphRoutinesTotalWidth = statBitVectorLength(proctabSize_);
+            gStatGraphRoutinesTotalWidth = statBitVectorLength(maxRank_ + 1);
 
             printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Exporting 2D graph to dot\n");
             graphlibError = graphlib_colorGraphByLeadingEdgeLabel(prefixTree2d);
@@ -1015,7 +1043,7 @@ StatError_t STAT_BackEnd::mainLoop()
                     edge = edges2d_[nodeId].second;
                 else
                 {
-                    edge = initializeBitVectorEdge(proctabSize_);
+                    edge = initializeBitVectorEdge(maxRank_ + 1);
                     if (edge == NULL)
                     {
                         printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to initialize edge\n");
@@ -1251,7 +1279,7 @@ StatError_t STAT_BackEnd::mainLoop()
         if (ackTag == PROT_SEND_NODE_IN_EDGE_RESP || ackTag == PROT_SEND_LAST_TRACE_RESP || ackTag == PROT_SEND_TRACES_RESP)
         {
             printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Sending serialized contents to FE with tag %d, length %d\n", ackTag, byteArrayLen);
-            bitVectorLength = statBitVectorLength(proctabSize_);
+            bitVectorLength = statBitVectorLength(maxRank_ + 1);
             if (stream->send(ackTag, "%Ac %d %d %ud", byteArray, byteArrayLen, bitVectorLength, myRank_, sampleType_) == -1)
             {
                 printMsg(STAT_MRNET_ERROR, __FILE__, __LINE__, "stream::send(%d) failure\n", ackTag);
@@ -1517,9 +1545,10 @@ StatError_t STAT_BackEnd::attach()
         if (proc != NULL)
             processMapNonNull_++;
     }
+
     for (i = 0, processMapIter = processMap_.begin(); processMapIter != processMap_.end(); i++, processMapIter++)
     {
-        procsToRanks_.insert(make_pair(processMapIter->second, i));
+        procsToRanks_.insert(make_pair(processMapIter->second, processMapIter->first));
 
 #if defined(GROUP_OPS)
         int mpirank = processMapIter->first;
@@ -1953,7 +1982,6 @@ StatError_t STAT_BackEnd::getVariable(const Frame &frame, char *variableName, ch
     return STAT_OK;
 }
 
-
 StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int traceFrequency, unsigned int nRetries, unsigned int retryFrequency, char *variableSpecification)
 {
     int j;
@@ -1984,7 +2012,7 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
         }
     }
 
-    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Gathering and merging %d traces from each task\n", nTraces);
+    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Gathering and merging %d traces from all tasks of size: %d\n", nTraces, proctabSize_);
 
 #ifdef STAT_GDB_BE
     if (usingGdb_ == true)
@@ -2042,7 +2070,7 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
             for (j = 0; j < proctabSize_; j++)
             {
                 /* Set edge label */
-                edge = initializeBitVectorEdge(proctabSize_);
+                edge = initializeBitVectorEdge(maxRank_ + 1);
                 if (edge == NULL)
                 {
                     printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to initialize edge\n");
@@ -2051,6 +2079,7 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
                     return STAT_ALLOCATE_ERROR;
                 }
                 edge->bitVector[j / STAT_BITVECTOR_BITS] |= STAT_GRAPH_BIT(j % STAT_BITVECTOR_BITS);
+				printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Gathering %d task traces having MPIRANK: %d\n", j, proctab_[j].mpirank);				
 
                 pArgs = Py_BuildValue("(i)", proctab_[j].pid);
                 if (!pArgs)
@@ -2123,7 +2152,7 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
                         currentFrameString = currentFrame;
                         map<string, string> nodeAttrs;
                         startPos = 0;
-                        endPos = currentFrameString.find("@");
+                        endPos = currentFrameString.find_last_of("@");
                         name += currentFrameString.substr(startPos, endPos - startPos);
                         nodeAttrs["function"] = currentFrameString.substr(startPos, endPos - startPos);
                         if (sampleType_ & STAT_SAMPLE_LINE)
@@ -2209,7 +2238,7 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
                         currentFrameString = currentFrame;
                         map<string, string> nodeAttrs;
                         startPos = 0;
-                        endPos = currentFrameString.find("@");
+                        endPos = currentFrameString.find_last_of("@");
                         name += currentFrameString.substr(startPos, endPos - startPos);
                         nodeAttrs["function"] = currentFrameString.substr(startPos, endPos - startPos);
                         if (sampleType_ & STAT_SAMPLE_LINE)
@@ -2287,7 +2316,17 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
         {
             for (processMapIter = processMap_.begin(), j = 0; processMapIter != processMap_.end(); processMapIter++, j++)
             {
-                statError = getStackTrace(processMapIter->second, j, nRetries, retryFrequency);
+                // Find rank for process
+                auto procsToRanksIter = procsToRanks_.find(processMapIter->second);
+                if (procsToRanksIter == procsToRanks_.end()) {
+                    printMsg(STAT_STACKWALKER_ERROR, __FILE__, __LINE__, "Failed fo find walker in procsToRanks_ map\n");
+                    return STAT_STACKWALKER_ERROR;
+                }
+
+                // Get stack trace for process with given rank
+                statError = getStackTrace(processMapIter->second, procsToRanksIter->second,
+                    nRetries, retryFrequency);
+
                 if (statError != STAT_OK)
                 {
                     printMsg(statError, __FILE__, __LINE__, "Error getting graph %d of %d\n", i + 1, nTraces);
@@ -2498,10 +2537,10 @@ StatError_t STAT_BackEnd::getStackTrace(Walker *proc, int rank, unsigned int nRe
     OpenMPStackWalker *ompWalker = NULL;
 #endif
 
-    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Gathering trace from task rank %d of %d\n", rank, proctabSize_);
+    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Gathering trace from task rank %d of %d\n", rank, maxRank_);
 
     /* Set edge label */
-    edge = initializeBitVectorEdge(proctabSize_);
+    edge = initializeBitVectorEdge(maxRank_ + 1);
     if (edge == NULL)
     {
         printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to initialize edge\n");
@@ -2877,7 +2916,7 @@ StatError_t STAT_BackEnd::addFrameToGraph(CallTree *stackwalkerGraph, graphlib_n
         {
             for (myRanksIter = myRanks.begin(); myRanksIter != myRanks.end(); myRanksIter++)
             {
-                edge = initializeBitVectorEdge(proctabSize_);
+                edge = initializeBitVectorEdge(maxRank_ + 1);
                 if (edge == NULL)
                 {
                     printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to initialize edge\n");
@@ -2913,7 +2952,6 @@ StatError_t STAT_BackEnd::addFrameToGraph(CallTree *stackwalkerGraph, graphlib_n
         if (nodes2d_.find(graphlibNode) != nodes2d_.end())
             nodes2d_.erase(graphlibNode);
     }
-
     return STAT_OK;
 }
 
@@ -3144,7 +3182,7 @@ StatError_t STAT_BackEnd::getStackTraceFromAll(unsigned int nRetries, unsigned i
         nodes2d_[newChildId] = msg;
         nodeIdToAttrs_[newChildId]["function"] = msg;
 
-        StatBitVectorEdge_t *edge = initializeBitVectorEdge(proctabSize_);
+        StatBitVectorEdge_t *edge = initializeBitVectorEdge(maxRank_ + 1);
         if (edge == NULL)
         {
             printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to initialize edge\n");
@@ -4172,6 +4210,7 @@ StatError_t STAT_BackEnd::statBenchCreateTraces(unsigned int maxDepth, int nTask
             proctab_[j].executable_name = NULL;
             proctab_[j].host_name = NULL;
             proctab_[j].mpirank = proctab_[0].mpirank + j;
+            maxRank_ = std::max(maxRank_, proctab_[j].mpirank);
         }
         init++;
     }
@@ -4214,7 +4253,7 @@ StatError_t STAT_BackEnd::statBenchCreateTrace(unsigned int maxDepth, unsigned i
     string path;
     StatBitVectorEdge_t *edge = NULL;
 
-    edge = initializeBitVectorEdge(proctabSize_);
+    edge = initializeBitVectorEdge(maxRank_ + 1);
     if (edge == NULL)
     {
         printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to initialize edge\n");

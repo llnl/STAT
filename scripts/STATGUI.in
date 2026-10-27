@@ -74,13 +74,21 @@ fi
 if test -z "$LMON_FE_ENGINE_TIMEOUT" ; then
     export LMON_FE_ENGINE_TIMEOUT=600
 fi
-
 export PATH=$PATH:@DOTBINDIR@
 if test -n "$PYTHONPATH" ; then
     export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@:$PYTHONPATH
 else
     export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
 fi
+if test -n "$STAT_INSTALL_DIR"; then
+    if test -z "$STAT_DAEMON_PATH" ; then
+	export STAT_DAEMON_PATH=$prefix/bin/STATD
+    fi
+    if test -z "$STAT_FILTER_PATH" ; then
+	export STAT_FILTER_PATH=$prefix/lib/STAT_FilterDefinitions.so
+    fi
+    export PATH=$PATH:$prefix/bin
+fi    
 
 if test -n @GSETTINGS_SCHEMA_DIR@ ; then
     export GSETTINGS_SCHEMA_DIR=@GSETTINGS_SCHEMA_DIR@

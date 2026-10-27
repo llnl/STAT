@@ -48,6 +48,9 @@ public:
     virtual StatError_t setAppNodeList();
     virtual StatError_t STATBench_setAppNodeList();
     virtual StatError_t STATBench_resetProctab(unsigned int nTasks);
+    virtual bool haveGlobalRanks() { return false; }
+    virtual const char* daemonExitedMsg();
+    virtual const char* appExitedMsg();
 
 private:
     //! validate the apid with CTI
