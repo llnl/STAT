@@ -411,6 +411,10 @@ StatError_t STAT_BackEnd::generateGraphs(graphlib_graph_p *prefixTree2d, graphli
                 }
                 nodeAttr.attr_values[index] =  statCopyNodeAttr(nodeAttrIter->first.c_str(), nodeAttrIter->second.c_str());
             }
+            // Populate labels so raw DOT files can be rendered directly by Graphviz.
+            string escapedLabel = statEscapeDotString(nodesIter->second, true);
+            // Graphlib reads and copies the label before this string goes out of scope.
+            nodeAttr.label = const_cast<char *>(escapedLabel.c_str());
             graphlibError = graphlib_addNode(*currentGraph, nodesIter->first, &nodeAttr);
             if (GRL_IS_FATALERROR(graphlibError))
             {

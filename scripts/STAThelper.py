@@ -538,17 +538,21 @@ def var_spec_to_string(var_spec):
 #
 #  \n
 def escaped_label(label):
-    """return a copy of the label with appropriate escape characters added"""
-    if label.find('<') == -1 and label.find('>') == -1:
-        return label
-    ret = ''
-    prev = ' '
+    """Escape record-label delimiters while preserving existing escapes."""
+    result = ''
+    escaped = False
+
     for character in label:
-        if prev != '\\' and (character == '<' or character == '>'):
-            ret += '\\'
-        ret += character
-        prev = character
-    return ret
+        if escaped:
+            escaped = False
+        elif character == '\\':
+            escaped = True
+        elif character in '<>{}|':
+            result += '\\'
+
+        result += character
+
+    return result
 
 # This is what a path to a library followed by an offset looks like.
 #expr = r'([^\s]+)\((0x[a-fA-F0-9]+)\)'

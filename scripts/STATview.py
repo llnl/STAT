@@ -284,6 +284,13 @@ def list_to_string(task_list):
     return ret
 
 
+def dot_attr_value(value):
+    """Quote parsed DOT values; xdot unescapes quotes but retains other escapes."""
+    if value is None:
+        return ''
+    return str(value).replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
+
+
 ## \param dot_filename - the input .dot file
 ## \param truncate - whether to truncate from "front" or "back"
 ## \param max_node_name - the max length of the node name to output
@@ -319,7 +326,7 @@ def create_temp(dot_filename, truncate, max_node_name):
                     temp_dot_file.write('\tgraph [')
                 else:
                     temp_dot_file.write(', ')
-                temp_dot_file.write('%s="%s"' %(attr, parser.graph_attrs[attr]))
+                temp_dot_file.write('%s="%s"' %(attr, dot_attr_value(parser.graph_attrs[attr])))
                 if i == len(parser.graph_attrs.keys()) - 1:
                     temp_dot_file.write('];\n')
             for node in parser.nodes:
@@ -327,9 +334,6 @@ def create_temp(dot_filename, truncate, max_node_name):
                 attrs["label"] = node_attr_to_label(attrs, False)
                 output_line = '\t%s [' % id
                 for key in attrs.keys():
-                    if key == 'function' or key == 'label':
-                        if attrs[key].find('{') != -1:
-                            attrs[key] = attrs[key].replace('{', '\{').replace('}', '\}')
                     if key == 'label':
                         label = escaped_label(attrs[key])
                         original_label = label
@@ -351,10 +355,10 @@ def create_temp(dot_filename, truncate, max_node_name):
                             final_label += label
                             if i != len(label_lines) - 1:
                                 final_label += '\\n'
-                        output_line += '%s="%s",' % (key, final_label)
+                        output_line += '%s="%s",' % (key, dot_attr_value(final_label))
                     else:
-                        output_line += '%s="%s",' % (key, attrs[key])
-                output_line += 'originallabel="%s"];\n' % original_label
+                        output_line += '%s="%s",' % (key, dot_attr_value(attrs[key]))
+                output_line += 'originallabel="%s"];\n' % dot_attr_value(original_label)
                 temp_dot_file.write(output_line)
             for edge in parser.edges:
                 src_id, dst_id, attrs = edge
@@ -366,10 +370,10 @@ def create_temp(dot_filename, truncate, max_node_name):
                             pass
                         original_label = attrs["label"]
                         label = get_truncated_edge_label(attrs)
-                        output_line += '%s="%s",' % (key, label)
+                        output_line += '%s="%s",' % (key, dot_attr_value(label))
                     else:
-                        output_line += '%s="%s",' % (key, attrs[key])
-                output_line += 'originallabel="%s"]\n' % original_label
+                        output_line += '%s="%s",' % (key, dot_attr_value(attrs[key]))
+                output_line += 'originallabel="%s"]\n' % dot_attr_value(original_label)
                 temp_dot_file.write(output_line)
     except IOError as e:
         show_error_dialog('Failed to open dot file %s' % dot_filename, exception=e)
@@ -2114,10 +2118,10 @@ class STATGraph(xdot_ui_elements.Graph):
                         node_text = node_attr_to_label(node.attrs)
                         if "eq_collapsed_label" in node.attrs.keys():
                             node.attrs["eq_collapsed_label"] = node_text
-                    f.write('\t%s [pos="0,0", label="%s"' % (node.node_name, escaped_label(node_text)))
+                    f.write('\t%s [pos="0,0", label="%s"' % (node.node_name, dot_attr_value(escaped_label(node_text))))
                     for attr in node.attrs.keys():
                         if attr not in ["pos", "label", "_draw_", "_ldraw_", "width", "height", "rects", "temporal_string", "lex_string"]:
-                            f.write(', %s="%s"' %(attr, node.attrs[attr]))
+                            f.write(', %s="%s"' %(attr, dot_attr_value(node.attrs[attr])))
                     f.write('];\n')
                 for edge in self.edges:
                     if edge.hide:
@@ -2137,10 +2141,10 @@ class STATGraph(xdot_ui_elements.Graph):
                             counts_string += '(%d)' %num_threads
                         counts_string += ':'
                         output_label = counts_string + output_label
-                    f.write('\t%s -> %s [label="%s"' % (edge.src.node_name, edge.dst.node_name, output_label))
+                    f.write('\t%s -> %s [label="%s"' % (edge.src.node_name, edge.dst.node_name, dot_attr_value(output_label)))
                     for attr in edge.attrs.keys():
                         if attr not in ["label", "_draw_", "_ldraw_", "_hdraw_", "pos", "lp"]:
-                            f.write(', %s="%s"' %(attr, edge.attrs[attr]))
+                            f.write(', %s="%s"' %(attr, dot_attr_value(edge.attrs[attr])))
                     f.write(']\n')
                 f.write('}\n')
         except IOError as e:
