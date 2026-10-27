@@ -25,6 +25,7 @@ __version_minor__ = 2
 __version_revision__ = 3
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
+import codecs
 import string
 import sys
 import shutil
@@ -283,6 +284,13 @@ def list_to_string(task_list):
     return ret
 
 
+def dot_attr_value(value):
+    """Quote parsed DOT values; xdot unescapes quotes but retains other escapes."""
+    if value is None:
+        return ''
+    return str(value).replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
+
+
 ## \param dot_filename - the input .dot file
 ## \param truncate - whether to truncate from "front" or "back"
 ## \param max_node_name - the max length of the node name to output
@@ -318,7 +326,7 @@ def create_temp(dot_filename, truncate, max_node_name):
                     temp_dot_file.write('\tgraph [')
                 else:
                     temp_dot_file.write(', ')
-                temp_dot_file.write('%s="%s"' %(attr, parser.graph_attrs[attr]))
+                temp_dot_file.write('%s="%s"' %(attr, dot_attr_value(parser.graph_attrs[attr])))
                 if i == len(parser.graph_attrs.keys()) - 1:
                     temp_dot_file.write('];\n')
             for node in parser.nodes:
@@ -326,9 +334,6 @@ def create_temp(dot_filename, truncate, max_node_name):
                 attrs["label"] = node_attr_to_label(attrs, False)
                 output_line = '\t%s [' % id
                 for key in attrs.keys():
-                    if key == 'function' or key == 'label':
-                        if attrs[key].find('{') != -1:
-                            attrs[key] = attrs[key].replace('{', '\{').replace('}', '\}')
                     if key == 'label':
                         label = escaped_label(attrs[key])
                         original_label = label
@@ -350,10 +355,10 @@ def create_temp(dot_filename, truncate, max_node_name):
                             final_label += label
                             if i != len(label_lines) - 1:
                                 final_label += '\\n'
-                        output_line += '%s="%s",' % (key, final_label)
+                        output_line += '%s="%s",' % (key, dot_attr_value(final_label))
                     else:
-                        output_line += '%s="%s",' % (key, attrs[key])
-                output_line += 'originallabel="%s"];\n' % original_label
+                        output_line += '%s="%s",' % (key, dot_attr_value(attrs[key]))
+                output_line += 'originallabel="%s"];\n' % dot_attr_value(original_label)
                 temp_dot_file.write(output_line)
             for edge in parser.edges:
                 src_id, dst_id, attrs = edge
@@ -365,10 +370,10 @@ def create_temp(dot_filename, truncate, max_node_name):
                             pass
                         original_label = attrs["label"]
                         label = get_truncated_edge_label(attrs)
-                        output_line += '%s="%s",' % (key, label)
+                        output_line += '%s="%s",' % (key, dot_attr_value(label))
                     else:
-                        output_line += '%s="%s",' % (key, attrs[key])
-                output_line += 'originallabel="%s"]\n' % original_label
+                        output_line += '%s="%s",' % (key, dot_attr_value(attrs[key]))
+                output_line += 'originallabel="%s"]\n' % dot_attr_value(original_label)
                 temp_dot_file.write(output_line)
     except IOError as e:
         show_error_dialog('Failed to open dot file %s' % dot_filename, exception=e)
@@ -392,6 +397,38 @@ def get_cache_file_path(file_dir, source):
     cache_directory_path = os.path.abspath(os.path.join(file_dir, cache_directory))
     cache_file_path = cache_directory_path + '/' + source
     return cache_file_path
+
+
+BINARY_SOURCE_EXTENSIONS = (".a", ".o", ".pyc", ".so")
+
+
+def is_binary_source_path(source):
+    """Check for binary/object filename extensions without opening the file."""
+    basename = os.path.basename(source).lower()
+    extension = os.path.splitext(basename)[1]
+    if extension in BINARY_SOURCE_EXTENSIONS:
+        return True
+    # Versioned libraries have numeric suffixes; names such as module.so.py do not.
+    return re.search(r"\.so(?:\.\d+)+$", basename) is not None
+
+
+def is_binary_file(filename):
+    """Check a 4096-byte sample for NUL bytes or invalid UTF-8.
+
+    This is a bounded heuristic; the subsequent full read can still fail.
+    """
+    sample_size = 4096
+    with open(filename, "rb") as file:
+        data = file.read(sample_size)
+    if b"\0" in data:
+        return True
+    try:
+        # A full sample may end partway through a valid UTF-8 character.
+        decoder = codecs.getincrementaldecoder("utf-8")()
+        decoder.decode(data, final=len(data) < sample_size)
+    except UnicodeDecodeError:
+        return True
+    return False
 
 
 ## \param current_graph - the currently opened graph object
@@ -776,10 +813,10 @@ class STATCompoundShape(xdot_ui_elements.CompoundShape):
         xdot_ui_elements.CompoundShape.__init__(self, shapes)
         self.hide = False
 
-    def draw(self, cr, highlight=False):
-        """Draw the compound shape if not hidden.
+    def _set_hidden_alpha(self):
+        """Set the alpha values for hidden and visible shapes.
 
-        Hidden shapes are not completely hidden, rather they are made opaque.
+        Hidden shapes are not completely hidden; they are made translucent.
         """
         a_val = 1.0
         if self.hide is True:
@@ -791,7 +828,17 @@ class STATCompoundShape(xdot_ui_elements.CompoundShape):
             color = shape.pen.fillcolor
             r, g, b, p = color
             shape.pen.fillcolor = (r, g, b, a_val)
+
+    # Older xdot calls draw(); newer xdot calls _draw() directly.
+    def draw(self, cr, highlight=False):
+        """Draw using the legacy xdot API."""
+        self._set_hidden_alpha()
         xdot_ui_elements.CompoundShape.draw(self, cr, highlight)
+
+    def _draw(self, cr, highlight=False, bounding=None):
+        """Draw using the modern xdot API."""
+        self._set_hidden_alpha()
+        xdot_ui_elements.CompoundShape._draw(self, cr, highlight, bounding)
 
 
 ## A new object to gather the edge label.
@@ -835,7 +882,7 @@ class STATElement(STATCompoundShape):
         """Get the label (should be overloaded by derrived class)."""
         return None
 
-    def get_jump(self, x, y):
+    def get_jump(self, x, y, to_dst=False):
         """Get the jump (should be overloaded by derrived class)."""
         return None
 
@@ -872,6 +919,7 @@ class STATNode(STATElement):
         except:
             pass
         self.attrs["label"] = label
+        self.tooltip = self.attrs.get("tooltip")
         self.source_dir = None
         self.edge_label = None
         self.edge_label_id = -2
@@ -927,7 +975,7 @@ class STATNode(STATElement):
             return EdgeLabel(self, self.edge_label)
         return None
 
-    def get_jump(self, x, y):
+    def get_jump(self, x, y, to_dst=False):
         """Get the jump object if specified coordintes are in the node."""
         if self.hide is True:
             return None
@@ -1068,7 +1116,7 @@ class STATEdge(STATElement):
             ret += "\tattrs[%s] = %s\n" % (key, self.attrs[key])
         return ret
 
-    def get_jump(self, x, y):
+    def get_jump(self, x, y, to_dst=False):
         """Get the jump object if specified coordintes are in the edge."""
         if xdot_ui_elements.square_distance(x, y, *self.points[0]) <= self.RADIUS*self.RADIUS:
             return xdot_ui_elements.Jump(self, self.dst.x, self.dst.y, highlight=set([self, self.dst]))
@@ -1378,6 +1426,10 @@ class STATGraph(xdot_ui_elements.Graph):
 
         source = node.attrs["source"].split('\\n')[item]
         cur_line_num = int(node.attrs["line"].split('\\n')[item].strip(":"))
+        # Reject known binary names before locating the file.
+        if is_binary_source_path(source):
+            show_error_dialog('Cannot view "%s" as source: it appears to be a binary file.' % source)
+            return True
 
         # get the node font and background colors
         for shape in node.shapes:
@@ -1433,6 +1485,15 @@ class STATGraph(xdot_ui_elements.Graph):
                 if source_full_path is None:
                     show_error_dialog('%sFailed to find file "%s" in search paths.  Please add the source file search path for this file\n' % (error_msg, source))
                     return True
+
+        # Other filenames may still contain binary data.
+        try:
+            if is_binary_file(source_full_path):
+                show_error_dialog('Cannot view "%s" as source: it appears to be a binary file.' % source_full_path)
+                return True
+        except IOError as e:
+            show_error_dialog('%s\nFailed to open file "%s"\n' % (repr(e), source_full_path), exception=e)
+            return True
 
         # create the source view window
         if self.source_view_window is None:
@@ -1496,8 +1557,10 @@ class STATGraph(xdot_ui_elements.Graph):
                     lines = file.readlines()
         except IOError as e:
             show_error_dialog('%s\nFailed to open file "%s"\n' % (repr(e), source_full_path), exception=e)
+            return True
         except Exception as e:
             show_error_dialog('%s\nFailed to process source file "%s"\n' % (repr(e), source_full_path), exception=e)
+            return True
         width = len(str(len(lines)))
         cur_line_iter = source_view.get_buffer().get_iter_at_offset(0)
         cur_line_mark = source_view.get_buffer().create_mark('cur_line', cur_line_iter, True)
@@ -2055,10 +2118,10 @@ class STATGraph(xdot_ui_elements.Graph):
                         node_text = node_attr_to_label(node.attrs)
                         if "eq_collapsed_label" in node.attrs.keys():
                             node.attrs["eq_collapsed_label"] = node_text
-                    f.write('\t%s [pos="0,0", label="%s"' % (node.node_name, escaped_label(node_text)))
+                    f.write('\t%s [pos="0,0", label="%s"' % (node.node_name, dot_attr_value(escaped_label(node_text))))
                     for attr in node.attrs.keys():
                         if attr not in ["pos", "label", "_draw_", "_ldraw_", "width", "height", "rects", "temporal_string", "lex_string"]:
-                            f.write(', %s="%s"' %(attr, node.attrs[attr]))
+                            f.write(', %s="%s"' %(attr, dot_attr_value(node.attrs[attr])))
                     f.write('];\n')
                 for edge in self.edges:
                     if edge.hide:
@@ -2078,10 +2141,10 @@ class STATGraph(xdot_ui_elements.Graph):
                             counts_string += '(%d)' %num_threads
                         counts_string += ':'
                         output_label = counts_string + output_label
-                    f.write('\t%s -> %s [label="%s"' % (edge.src.node_name, edge.dst.node_name, output_label))
+                    f.write('\t%s -> %s [label="%s"' % (edge.src.node_name, edge.dst.node_name, dot_attr_value(output_label)))
                     for attr in edge.attrs.keys():
                         if attr not in ["label", "_draw_", "_ldraw_", "_hdraw_", "pos", "lp"]:
-                            f.write(', %s="%s"' %(attr, edge.attrs[attr]))
+                            f.write(', %s="%s"' %(attr, dot_attr_value(edge.attrs[attr])))
                     f.write(']\n')
                 f.write('}\n')
         except IOError as e:
@@ -3049,14 +3112,18 @@ class STATDotWidget(xdot_ui_window.DotWidget):
         return xdot_ui_window.DotWidget.on_area_scroll_event(self, area, event)
 
     def on_key_press_event(self, widget, event):
-        if event.keyval in (gtk.keysyms.Page_Up, gtk.keysyms.plus, gtk.keysyms.equal, gtk.keysyms.KP_Add, gtk.keysyms.Page_Down, gtk.keysyms.minus, gtk.keysyms.KP_Subtract, gtk.keysyms.Left, gtk.keysyms.Right, gtk.keysyms.Up, gtk.keysyms.Down):
+        # GDK name lookup works with both PyGTK 2 and introspected GTK 3.
+        keyval = gtk.gdk.keyval_from_name
+        if event.keyval in tuple(keyval(name) for name in (
+                'Page_Up', 'plus', 'equal', 'KP_Add', 'Page_Down', 'minus',
+                'KP_Subtract', 'Left', 'Right', 'Up', 'Down')):
             self.user_zoom = True
-        if event.keyval == gtk.keysyms.r:
+        if event.keyval == keyval('r'):
             global window
             window.on_toolbar_action(None, 'Reset', self.graph.on_original_graph, (widget,))
             return
         ret = xdot_ui_window.DotWidget.on_key_press_event(self, widget, event)
-        if event.keyval == gtk.keysyms.r:
+        if event.keyval == keyval('r'):
             self.user_zoom = False
             self.zoom_to_fit()
         return ret

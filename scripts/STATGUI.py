@@ -1529,6 +1529,10 @@ host[1-10,12,15-20];otherhost[30]
         """Determine the process state and detach from the current job."""
         self.proctab_file_path = None
         self.proctab = None
+        if self.STAT is None:
+            self.attached = False
+            self.set_action_sensitivity('detached' if self.reattach else 'new')
+            return STAT_OK
         if self.attached is False:
             self.STAT = None
             self.reattach = False
@@ -1543,6 +1547,8 @@ host[1-10,12,15-20];otherhost[30]
             return ret
         while 1:
             run_gtk_main_loop()
+            if self.STAT is None:
+                return STAT_OK
             ret = self.STAT.receiveAck(False)
             if ret == STAT_OK:
                 break
@@ -1573,6 +1579,9 @@ host[1-10,12,15-20];otherhost[30]
 
     def on_pause(self, action=None):
         """Callback to pause the job."""
+        if self.STAT is None or self.attached is False:
+            self.set_action_sensitivity('detached' if self.reattach else 'new')
+            return STAT_OK
         self.set_action_sensitivity('paused')
         ret = self.STAT.pause()
         if ret != STAT_OK:
@@ -1581,6 +1590,8 @@ host[1-10,12,15-20];otherhost[30]
             return ret
         while 1:
             run_gtk_main_loop()
+            if self.STAT is None:
+                return STAT_OK
             ret = self.STAT.receiveAck(False)
             if ret == STAT_OK:
                 break
@@ -1592,6 +1603,9 @@ host[1-10,12,15-20];otherhost[30]
 
     def on_resume(self, action=None):
         """Callback to resume the job."""
+        if self.STAT is None or self.attached is False:
+            self.set_action_sensitivity('detached' if self.reattach else 'new')
+            return STAT_OK
         self.set_action_sensitivity('running')
         ret = self.STAT.resume()
         if ret != STAT_OK:
@@ -1600,6 +1614,8 @@ host[1-10,12,15-20];otherhost[30]
             return ret
         while 1:
             run_gtk_main_loop()
+            if self.STAT is None:
+                return STAT_OK
             ret = self.STAT.receiveAck(False)
             if ret == STAT_OK:
                 break

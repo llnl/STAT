@@ -411,6 +411,10 @@ StatError_t STAT_BackEnd::generateGraphs(graphlib_graph_p *prefixTree2d, graphli
                 }
                 nodeAttr.attr_values[index] =  statCopyNodeAttr(nodeAttrIter->first.c_str(), nodeAttrIter->second.c_str());
             }
+            // Populate labels so raw DOT files can be rendered directly by Graphviz.
+            string escapedLabel = statEscapeDotString(nodesIter->second, true);
+            // Graphlib reads and copies the label before this string goes out of scope.
+            nodeAttr.label = const_cast<char *>(escapedLabel.c_str());
             graphlibError = graphlib_addNode(*currentGraph, nodesIter->first, &nodeAttr);
             if (GRL_IS_FATALERROR(graphlibError))
             {
@@ -1705,6 +1709,12 @@ StatError_t STAT_BackEnd::resume()
         for (processMapIter = processMap_.begin(); processMapIter != processMap_.end(); processMapIter++)
             resumeProcess(processMapIter->second);
     }
+    // Clear any stop left by LaunchMON's SIGSTOP after Dyninst resumes the rank.
+    for (int i = 0; i < proctabSize_; i++)
+    {
+        if (kill(proctab_[i].pid, SIGCONT) == -1 && errno != ESRCH)
+            printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to SIGCONT native target pid %d after resume: %s\n", proctab_[i].pid, strerror(errno));
+    }
     isRunning_ = true;
 
     return STAT_OK;
@@ -1864,12 +1874,14 @@ StatError_t STAT_BackEnd::getSourceLine(Walker *proc, Address addr, char *outBuf
     if (boolRet == false)
     {
         snprintf(outBuf, BUFSIZE, "?");
+        Symtab::closeSymtab(symtab);
         return STAT_OK;
     }
 
-
     snprintf(outBuf, BUFSIZE, "%s", lines[0]->getFile().c_str());
     *lineNum = lines[0]->getLine();
+    // Release the per-frame reference; Dyninst does not cache /proc paths.
+    Symtab::closeSymtab(symtab);
     //printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "address %lx resolved to %s:%d\n", addr, outBuf, *lineNum);
 
     return STAT_OK;
@@ -3287,6 +3299,21 @@ StatError_t STAT_BackEnd::detach(unsigned int *stopArray, int stopArrayLen)
         }
         processMap_.clear();
         processMapNonNull_ = 0;
+    }
+    // Continue rank processes after detach, except those explicitly requested to remain stopped.
+    for (int i = 0; i < proctabSize_; i++)
+    {
+        leaveStopped = false;
+        for (int j = 0; j < stopArrayLen; j++)
+        {
+            if (stopArray[j] == proctab_[i].mpirank)
+            {
+                leaveStopped = true;
+                break;
+            }
+        }
+        if (!leaveStopped && kill(proctab_[i].pid, SIGCONT) == -1 && errno != ESRCH)
+            printMsg(STAT_WARNING, __FILE__, __LINE__, "Failed to SIGCONT native target pid %d after detach: %s\n", proctab_[i].pid, strerror(errno));
     }
     return STAT_OK;
 }
