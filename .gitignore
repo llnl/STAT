@@ -119,3 +119,8 @@ hostnamefn.*
 /tests/ci-image/pixi.lock
 
 /tests/integration/results/
+
+# Standalone Python GUI packaging
+/scripts/gui/build/
+/scripts/gui/dist/
+/scripts/gui/*.egg-info/

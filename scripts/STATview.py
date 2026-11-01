@@ -49,8 +49,8 @@ if HAVE_DLOPEN is True:
 
 (MODEL_INDEX_HIDE, MODEL_INDEX_NAME, MODEL_INDEX_CASESENSITIVE, MODEL_INDEX_REGEX, MODEL_INDEX_EDITABLE, MODEL_INDEX_NOTEDITABLE, MODEL_INDEX_CALLBACK, MODEL_INDEX_ICON, MODEL_INDEX_BUTTONNAME) = range(9)
 
-# Make sure $DISPLAY is set (not good for Windows!)
-if os.name != 'nt':
+# Native macOS GTK uses Quartz and does not require an X11 DISPLAY.
+if os.name != 'nt' and sys.platform != 'darwin':
     if not "DISPLAY" in os.environ:
         raise Exception('$DISPLAY is not set.  Ensure that X11 forwarding is enabled.\n')
 
@@ -167,10 +167,13 @@ if HAVE_FUNCTOOLS==False:
         pass
 
 ## The location of the STAT logo image
-try:
-    STAT_LOGO = os.path.join(os.path.dirname(__file__), '../../../share/stat/STATlogo.gif')
-except:
-    STAT_LOGO = 'STATlogo.gif'
+# Wheels install data under sys.prefix; native installs may use lib64 or a
+# configured Python module directory. Keep the existing native lookup as well.
+STAT_LOGO = next((path for path in (
+    os.path.join(os.path.dirname(__file__), '../../../share/stat/STATlogo.gif'),
+    os.path.join(sys.prefix, 'share', 'stat', 'STATlogo.gif'),
+    os.path.join(os.path.dirname(__file__), '../STATlogo.gif'),
+) if os.path.isfile(path)), 'STATlogo.gif')
 
 ## A variable to enable or disable scroll bars (not 100% functional)
 use_scroll_bars = False

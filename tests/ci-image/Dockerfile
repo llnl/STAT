@@ -60,10 +60,11 @@ RUN JOBS="$JOBS" bash /opt/stat-ci/install-deps.sh launchmon
 
 FROM libraries AS runtime
 
-# MPI runs inside Docker and inside an Enroot image with matching MPI libraries.
+# Ubuntu packages support MPI workloads and the standalone GUI smoke outside Pixi.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
          gcc g++ python3 graphviz openmpi-bin libopenmpi-dev \
+         python3-venv python3-gi python3-gi-cairo gir1.2-gtk-3.0 librsvg2-common xvfb xauth \
          jq squashfs-tools parallel libcap2-bin \
     && case "$TARGETARCH" in \
       amd64) sha=5955c51e88df0c5ed538d87abb5264609d4bad55fa8570745ed5d4ec66c8ab91 ;; \
