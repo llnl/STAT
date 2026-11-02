@@ -19,6 +19,13 @@ AC_DEFUN([X_AC_PYTHON], [
     AC_MSG_RESULT($PYTHON)
   fi
   STATPYTHON=$PYTHON
+  AC_ARG_WITH(stat-python,
+    [AS_HELP_STRING([--with-stat-python=path],
+      [Use the specified path to python in the STAT executable scripts]
+    )],
+    [STATPYTHON=${withval}],
+    [STATPYTHON=$STATPYTHON]
+  )
   AC_MSG_CHECKING([Python include dir])
   if test -z "$PYTHONINCLUDE"; then
     python_header_path=`$PYTHON -c "import distutils.sysconfig; \
@@ -36,8 +43,8 @@ AC_DEFUN([X_AC_PYTHON], [
     LDFLAGS="$LDFLAGS -L$PYTHONLIB/../../ -Wl,-rpath=$PYTHONLIB/../../"
   fi
   AC_MSG_CHECKING([Python version])
-  python_version=`$PYTHON -c "import distutils.sysconfig; \
-    print(distutils.sysconfig.get_python_version());"`
+  python_version=`$PYTHON -c "import platform; \
+    print(platform.python_version());"`
   python_minor_version=`echo $python_version | sed 's/.*\.\(.*\)/\1/'`
   if test $python_version '>' 2.99 ; then
     if test $python_minor_version -lt 8 ; then
