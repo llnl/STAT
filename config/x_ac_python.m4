@@ -26,6 +26,15 @@ AC_DEFUN([X_AC_PYTHON], [
     [STATPYTHON=${withval}],
     [STATPYTHON=$STATPYTHON]
   )
+  AC_ARG_WITH(python-path,
+    [AS_HELP_STRING([--with-python-python=paths],
+      [Use the specified paths for PYTHONPATH in the STAT executable scripts]
+    )],
+    [STAT_PYTHONPATH=${withval}],
+    [STAT_PYTHONPATH=$STAT_PYTHONPATH]
+  )
+  PYTHONPATH=$STAT_PYTHONPATH
+  AC_SUBST(PYTHONPATH)
   AC_MSG_CHECKING([Python include dir])
   if test -z "$PYTHONINCLUDE"; then
     python_header_path=`$PYTHON -c "import distutils.sysconfig; \
