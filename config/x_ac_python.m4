@@ -53,7 +53,7 @@ AC_DEFUN([X_AC_PYTHON], [
   fi
   AC_MSG_CHECKING([Python version])
   python_version=`$PYTHON -c "import platform; \
-    print(platform.python_version());"`
+    print('{0}.{1}'.format(*platform.python_version_tuple()));"`
   python_minor_version=`echo $python_version | sed 's/.*\.\(.*\)/\1/'`
   if test $python_version '>' 2.99 ; then
     if test $python_minor_version -lt 8 ; then
