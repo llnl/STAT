@@ -20,7 +20,7 @@ Or for Flux, there is an additional step required:
 </para>
 <informalexample>
     <screen>
-  % flux mini run -n 8 mpi_application &
+  % flux run -n 8 mpi_application &
   [1] 216842
 
   % flux jobs -A

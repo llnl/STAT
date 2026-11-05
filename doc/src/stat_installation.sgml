@@ -1,8 +1,5 @@
 <para>
-STAT and its dependencies can also be built via the Spack package management tool, available at <ulink url="https://github.com/spack/spack"></ulink>. Running <command>spack install stat</command> should build STAT and all of its dependencies, including those require for the STAT GUI. Note that three Spack variants exist. The first is <command>+examples</command>, to enable building example MPI code that STAT can be tested against. This is disabled by default to avoid requiring an MPI library, but enabling it will trigger a build of MPI. The second is <command>+dysect</command> to enable building of the DySectAPI. The third is <command>+fgfs</command> to build with FastGlobalFileStatus and target binary broadcast support. FGFS is crucial to scalability, particularly when debugging applications that load several large dynamic libraries.
-</para>
-<para>
-For STAT 4.0.1 and beyond, the spack build of STAT requires Python 3 and will require the activation of the py-xdot package <command>./bin/spack activate py-xdot</command>. For versions up to and including STAT 4.0.0, the spack build of STAT requires Python 2 and requires the activation of the py-pygtk and py-enum34 packages <command>./bin/spack activate py-pygtk</command> and <command>./bin/spack activate py-enum34</command>.
+STAT and its dependencies can also be built via the Spack package management tool, available at <ulink url="https://github.com/spack/spack"></ulink>. Running <command>spack install stat</command> should build STAT and all of its dependencies, including those require for the STAT GUI. Note that three Spack variants exist. The first is <command>+gui</command> to enable the building of the stat-view dot file viewer and the stat-gui GUI. The second is <command>+examples</command>, to enable building example MPI code that STAT can be tested against. This is disabled by default to avoid requiring an MPI library, but enabling it will trigger a build of MPI. The third is <command>+dysect</command> to enable building of the DySectAPI. The fourth is <command>+fgfs</command> to build with FastGlobalFileStatus and target binary broadcast support. FGFS is crucial to scalability, particularly when debugging applications that load several large dynamic libraries.
 </para>
 <para>
 When building STAT itself, first run <command>configure</command>.  You will need to use the <option>--with-package</option> options to specify the install prefix for mrnet, graphlib, launchmon, libdwarf, and dyninst.  These options will add the necessary include and library search paths to the compile options.  Refer to <command>configure --help</command> for exact options.  You may also wish to specify the maximum number of communication processes to launch per node with the option <option>--with-procspernode=number</option>, generally set to the number of cores per node. 
@@ -11,13 +8,7 @@ When building STAT itself, first run <command>configure</command>.  You will nee
 STAT creates wrapper scripts for the <command>stat-cl</command> and <command>stat-gui</command> commands.  These wrappers set appropriate paths for the launchmon and mrnet_commnode executables, based on the <option>--with-launchmon</option> and <option>--with-mrnet</option> configure options, thus it is important to specify both of these even if they share a prefix.
 </para>
 <para>
-STAT will try to build the GUI by default.  Building and running the STAT GUI requires SWIG and pygtk.  If you need to modify your PYTHONPATH envirnment variable to search for side installed site-packages, you can do this by specifying <option>STAT_PYTHONPATH=path</option> during configure.  This will add the appropriate directory to the $PYTHONPATH environment variable within the stat-gui script.  To disable the building of the GUI, use the <option>--enable-gui=no</option> configure option.
-</para>
-<para>
-On BlueGene systems, be sure to <command>configure --with-bluegene</command>.  This will enable the BGL macro for BlueGene specific compilation.  It is important to note that on BlueGene systems, you may need to use an alternate hostname for the front-end node in order to get MRNet to bind to the appropriate network interface that can communicate with the I/O nodes.  By default, STAT will append "-io" to the hostname.  Alternatively, you can specify the hostname with the STAT_FE_HOSTNAME environment variable.
-</para>
-<para>
-To compile on Cray systems runnig alps, you no longer need to specify <option>--with-cray-alps</option>.  An example configure line for Cray:
+STAT will try to build the GUI by default.  Building and running the STAT GUI requires SWIG, pygobject, and xdot.  If you need to modify your PYTHONPATH envirnment variable to search for side installed site-packages, you can do this by specifying <option>--with-python-path=path</option> during configure.  This will add the appropriate directory to the $PYTHONPATH environment variable within the stat-gui and stat-view scripts.  To disable the building of the GUI, use the <option>--enable-gui=no</option> configure option. Here is an example configure command:
 </para>
 <informalexample>
     <screen>
@@ -26,13 +17,11 @@ To compile on Cray systems runnig alps, you no longer need to specify <option>--
 --with-graphlib==/tmp/work/lee218/install \
 --with-stackwalker=/tmp/work/lee218/install \
 --with-libdwarf=/tmp/work/lee218/install \
---prefix=/tmp/work/lee218/install \
-MPICC=cc MPICXX=CC MPIF77=ftn --enable-shared LD=/usr/bin/ld   
+--with-python=/usr/bin/python3 \
+--with-python-path=/tmp/work/lee218/install/lib/python3.14/site-packages \
+--prefix=/tmp/work/lee218/install
     </screen>
 </informalexample>
-<para>
-Note that specifying <option>LD=/usr/bin/ld</option> may be required on Cray systems to avoid using the compute node linker.  It is also worth noting that Cray includes a build of STAT as part of their system software stack.  It is typically installed in /opt/cray/stat and can be loaded via modules.  
-</para>
 <para>
 After running configure you just need to run:
 </para>
@@ -49,7 +38,7 @@ STAT will also, by default, add rpaths to dependent libraries.  This behavior ca
 </para>
 
 <para>
-STAT can also be configured to use GDB as a backend instead of Dyninst. To specify the path to gdb, use the <option>--with-gdb</option> flag. If CUDA kernal traces are desired, the path should point to a working cuda-gdb executable. Note that STAT currently still requires Dyninst as a dependence even when using the GDB backend.
+STAT can also be configured to use GDB as a backend instead of Dyninst. To specify the path to gdb, use the <option>--with-gdb</option> flag. If GPU kernal traces are desired, the path should point to a working cuda-gdb, roc-gdb, or gdb-oneapi executable. Note that STAT currently still requires Dyninst as a dependence even when using the GDB backend.
 </para>
 
 <para>
