@@ -1,4 +1,4 @@
-dist_bin_SCRIPTS = run_one_sec
+dist_bin_SCRIPTS = run_one_sec stat-dot-tree
 bin_SCRIPTS = STAT stat-cl stat-script stat-core-merger attach-helper
 python_PYTHON = STATmain.py stat_merge_base.py STATmerge.py core_file_merger.py bg_core_backtrace.py attach_helper.py STAThelper.py
 if ENABLE_GDB
