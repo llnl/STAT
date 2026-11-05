@@ -1,9 +1,9 @@
 <!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook V4.1//EN" [
-<!ENTITY stat_auspice SYSTEM "stat_auspice.sgml">
-<!ENTITY stat_license SYSTEM "stat_license.sgml">
-<!ENTITY stat_copyright SYSTEM "stat_copyright.sgml">
-<!ENTITY stat_whentouse SYSTEM "stat_whentouse.sgml">
-<!ENTITY statgui_tutorial SYSTEM "statgui_tutorial.sgml">
+<!ENTITY statAuspice SYSTEM "stat_auspice.sgml">
+<!ENTITY statLicense SYSTEM "stat_license.sgml">
+<!ENTITY statCopyright SYSTEM "stat_copyright.sgml">
+<!ENTITY statWhentouse SYSTEM "stat_whentouse.sgml">
+<!ENTITY statguiTutorial SYSTEM "statgui_tutorial.sgml">
 ]>
 
 <book>
@@ -30,15 +30,15 @@
 </bookinfo>
 <preface>
     <title>Disclaimer</title>
-    <section><title>Auspice</title>&stat_auspice</section>
-    <section><title>License</title>&stat_license</section>
+    <section><title>Auspice</title>&statAuspice</section>
+    <section><title>License</title>&statLicense</section>
 </preface>
 <chapter>
     <title>When To Use</title>
-    &stat_whentouse
+    &statWhentouse
 </chapter>
 <chapter>
     <title>Using the STAT GUI</title>
-    &statgui_tutorial
+    &statguiTutorial
 </chapter>
 </book>

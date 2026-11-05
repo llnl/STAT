@@ -2,11 +2,11 @@
 <!ENTITY % manpage "INCLUDE">
 <!ENTITY % userguide "IGNORE">
 <!ENTITY % llnluserguide "IGNORE">
-<!ENTITY stat_copyright SYSTEM "stat_copyright.sgml">
-<!ENTITY statgui_description SYSTEM "statgui_description.sgml">
-<!ENTITY statgui_options SYSTEM "statgui_options.sgml">
-<!ENTITY statgui_toolbar SYSTEM "statgui_toolbar.sgml">
-<!ENTITY statgui_eq_class SYSTEM "statgui_eq_class.sgml">
+<!ENTITY statCopyright SYSTEM "stat_copyright.sgml">
+<!ENTITY statguiDescription SYSTEM "statgui_description.sgml">
+<!ENTITY statguiOptions SYSTEM "statgui_options.sgml">
+<!ENTITY statguiToolbar SYSTEM "statgui_toolbar.sgml">
+<!ENTITY statguiEqClass SYSTEM "statgui_eq_class.sgml">
 ]>
 <refentry>
 <refentryinfo>
@@ -41,13 +41,13 @@
         <date>2018-02-02</date>
     </refsect1info>
     <title>DESCRIPTION</title>
-    &statgui_description
-    &statgui_toolbar
-    &statgui_eq_class
+    &statguiDescription
+    &statguiToolbar
+    &statguiEqClass
 </refsect1>
 <refsect1>
     <title>OPTIONS</title>
-    &statgui_options
+    &statguiOptions
 </refsect1>
 <refsect1>
     <title>AUTHOR</title>
@@ -63,7 +63,7 @@
 </refsect1>
 <refsect1>
     <title>COPYRIGHT</title>
-    &stat_copyright
+    &statCopyright
 </refsect1>
 <refsect1>
     <title>SEE ALSO</title>

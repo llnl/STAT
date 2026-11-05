@@ -1,8 +1,8 @@
 <!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook V4.1//EN" [
-<!ENTITY stat_installation SYSTEM "stat_installation.sgml">
-<!ENTITY stat_dependencies SYSTEM "stat_dependencies.sgml">
+<!ENTITY statInstallation SYSTEM "stat_installation.sgml">
+<!ENTITY statDependencies SYSTEM "stat_dependencies.sgml">
 ]>
 <book><title>Installing STAT</title>
-<chapter><title>Dependent Packages</title>&stat_dependencies</chapter>
-<chapter><title>Installation</title>&stat_installation</chapter>
+<chapter><title>Dependent Packages</title>&statDependencies</chapter>
+<chapter><title>Installation</title>&statInstallation</chapter>
 </book>

@@ -2,10 +2,10 @@
 <!ENTITY % manpage "INCLUDE">
 <!ENTITY % userguide "IGNORE">
 <!ENTITY % llnluserguide "IGNORE">
-<!ENTITY stat_copyright SYSTEM "stat_copyright.sgml">
-<!ENTITY statview_description SYSTEM "statview_description.sgml">
-<!ENTITY statview_node_menu SYSTEM "statview_node_menu.sgml">
-<!ENTITY statview_toolbar SYSTEM "statview_toolbar.sgml">
+<!ENTITY statCopyright SYSTEM "stat_copyright.sgml">
+<!ENTITY statviewDescription SYSTEM "statview_description.sgml">
+<!ENTITY statviewNodeMenu SYSTEM "statview_node_menu.sgml">
+<!ENTITY statviewToolbar SYSTEM "statview_toolbar.sgml">
 ]>
 <refentry>
 <refentryinfo>
@@ -40,9 +40,9 @@
         <date>2018-02-02</date>
     </refsect1info>
     <title>DESCRIPTION</title>
-    &statview_description
-    &statview_node_menu
-    &statview_toolbar
+    &statviewDescription
+    &statviewNodeMenu
+    &statviewToolbar
 </refsect1>
 <refsect1>
     <title>AUTHOR</title>
@@ -58,7 +58,7 @@
 </refsect1>
 <refsect1>
     <title>COPYRIGHT</title>
-    &stat_copyright
+    &statCopyright
 </refsect1>
 <refsect1>
     <title>SEE ALSO</title>

@@ -1,8 +1,8 @@
 <para>
-By left clicking on a node in the call prefix tree you will get a window displaying the full list of tasks and the full frame label <![%userguide[(<xref linkend="statgui_menu">)]]>.  This window also contains buttons that allow for the manipulation of the graph from that node.  Right clicking on a node provides a pop-up menu with the same options.  Note all of these operations are performed on the current visible state of the call prefix tree.
+By left clicking on a node in the call prefix tree you will get a window displaying the full list of tasks and the full frame label <![%userguide[(<xref linkend="statguiMenu">)]]>.  This window also contains buttons that allow for the manipulation of the graph from that node.  Right clicking on a node provides a pop-up menu with the same options.  Note all of these operations are performed on the current visible state of the call prefix tree.
 </para>
 <![%userguide[
-<figure id="statgui_menu">
+<figure id="statguiMenu">
     <title>The node pop-up window</title>
     <screenshot><mediaobject><imageobject>
     <imagedata scale="50" fileref="figs/statgui_node_dialog.png">
@@ -81,7 +81,7 @@ The node operations are defined as follows:
     <term><GUIbutton>View Source</GUIbutton></term>
     <listitem>
         <para>
-        creates a popup window <![%userguide[(<xref linkend="source_view">)]]> displaying the source file (only for stack traces with line number information). This may require the source file's path to be added to the search path, through <GUImenu>File</GUImenu> -> <GUImenuitem>Add Search Paths</GUImenuitem>.
+        creates a popup window <![%userguide[(<xref linkend="sourceView">)]]> displaying the source file (only for stack traces with line number information). This may require the source file's path to be added to the search path, through <GUImenu>File</GUImenu> -> <GUImenuitem>Add Search Paths</GUImenuitem>.
         </para>
     </listitem>
 </varlistentry>
@@ -111,7 +111,7 @@ The node operations are defined as follows:
 </varlistentry>
 </variablelist>
 <![%userguide[
-<figure id="source_view">
+<figure id="sourceView">
     <title>The source view window.  The colored arrows correspond to the nodes in the call prefix tree.</title>
     <screenshot><mediaobject><imageobject>
     <imagedata scale="50" fileref="figs/statgui_source_view.png">

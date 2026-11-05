@@ -2,10 +2,10 @@
 <!ENTITY % manpage "INCLUDE">
 <!ENTITY % userguide "IGNORE">
 <!ENTITY % llnluserguide "IGNORE">
-<!ENTITY statbench_options SYSTEM "statbench_options.sgml">
-<!ENTITY statbench_example SYSTEM "statbench_example.sgml">
-<!ENTITY stat_copyright SYSTEM "stat_copyright.sgml">
-<!ENTITY statbench_description SYSTEM "statbench_description.sgml">
+<!ENTITY statbenchOptions SYSTEM "statbench_options.sgml">
+<!ENTITY statbenchExample SYSTEM "statbench_example.sgml">
+<!ENTITY statCopyright SYSTEM "stat_copyright.sgml">
+<!ENTITY statbenchDescription SYSTEM "statbench_description.sgml">
 ]>
 <refentry>
 <refentryinfo>
@@ -40,15 +40,15 @@
         <date>2018-02-02</date>
     </refsect1info>
     <title>DESCRIPTION</title>
-    &statbench_description
+    &statbenchDescription
 </refsect1>
 <refsect1>
     <title>OPTIONS</title>
-    &statbench_options
+    &statbenchOptions
 </refsect1>
 <refsect1>
     <title>EXAMPLE</title>
-    &statbench_example
+    &statbenchExample
 </refsect1>
 <refsect1>
     <title>AUTHOR</title>
@@ -64,7 +64,7 @@
 </refsect1>
 <refsect1>
     <title>COPYRIGHT</title>
-    &stat_copyright
+    &statCopyright
 </refsect1>
 <refsect1>
     <title>SEE ALSO</title>

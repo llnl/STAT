@@ -21,14 +21,15 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 __author__ = ["Gregory Lee <lee218@llnl.gov>", "Dorian Arnold", "Matthew LeGendre", "Dong Ahn", "Bronis de Supinski", "Barton Miller", "Martin Schulz", "Niklas Nielson", "Nicklas Bo Jensen", "Jesper Nielson"]
 __version_major__ = 4
-__version_minor__ = 2
-__version_revision__ = 3
+__version_minor__ = 3
+__version_revision__ = 0
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
 import sys
 import os
 import logging
 import time
+import subprocess
 from gdb import *
 
 class CudaGdbDriver(GdbDriver):
@@ -39,12 +40,31 @@ class CudaGdbDriver(GdbDriver):
         gdb_command = os.environ['STAT_GDB']
     except:
         gdb_command = 'cuda-gdb'
-    gdb_args = ['--cuda-use-lockfile=0']
+    gdb_args = []
 
     def __init__(self, pid, log_level='error', log_file='stderr'):
         """Constructor"""
+        # Older releases require this flag for concurrent rank debugging. Newer
+        # releases disable lockfiles by default and may reject the option.
+        self.gdb_args = []
+        try:
+            subprocess.check_output(
+                [self.gdb_command, '--cuda-use-lockfile=0', '--version'],
+                stderr=subprocess.STDOUT, universal_newlines=True, timeout=10)
+        except subprocess.CalledProcessError as error:
+            if ('unrecognized option' not in error.output or
+                    '--cuda-use-lockfile' not in error.output):
+                raise
+        else:
+            self.gdb_args.append('--cuda-use-lockfile=0')
         GdbDriver.__init__(self, pid, log_level, log_file)
         logging.info('CUDA GDB init')
+
+    def detach(self):
+        """Some CUDA-GDB releases confirm detach without another prompt."""
+        self.subprocess.stdin.write('detach\n')
+        self.subprocess.stdin.flush()
+        return check_lines(self.readlines('detached]'))
 
     def get_cuda_threads(self, retries=5, retry_frequency=10000):
         """Gets a list of cuda threads.

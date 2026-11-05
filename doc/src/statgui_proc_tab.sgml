@@ -1,8 +1,8 @@
 <para>
-The application process table can be accessed through the stat-gui File->Properties menu item.  This window <![%userguide[(<xref linkend="statgui_proc_tab">)]]> lists the properties of the application, including the number of nodes, processes, the job launcher host and PID and a 4-tuple list of application process rank, host, PID, and executable.  The executable path in the 4-tuple is an index into the executable list at the top of the window in order to reduce duplication of text.  The 4-tuple process table list can be filtered by ranks or hosts.
+The application process table can be accessed through the stat-gui File->Properties menu item.  This window <![%userguide[(<xref linkend="statguiProcTab">)]]> lists the properties of the application, including the number of nodes, processes, the job launcher host and PID and a 4-tuple list of application process rank, host, PID, and executable.  The executable path in the 4-tuple is an index into the executable list at the top of the window in order to reduce duplication of text.  The 4-tuple process table list can be filtered by ranks or hosts.
 </para>
 <![%userguide[
-<figure id="statgui_proc_tab">
+<figure id="statguiProcTab">
     <title>The properties window shows the application properties and lists the individual application processes.</title>
     <screenshot><mediaobject><imageobject>
     <imagedata scale="50" fileref="figs/statgui_proc_tab.png">

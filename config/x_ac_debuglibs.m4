@@ -27,9 +27,9 @@ AC_DEFUN([X_AC_DEBUGLIBS], [
       [Add the compile and link search paths for stackwalker]
     )],
     [CXXFLAGS="$CXXFLAGS -I${withval}/include"
-     LDFLAGS="$LDFLAGS -L${withval}/lib"
+     LDFLAGS="$LDFLAGS -L${withval}/lib -L${withval}/lib64"
      STACKWALKERPREFIX="${withval}"
-     RPATH_FLAGS="$RPATH_FLAGS -Wl,-rpath=${withval}/lib"],
+     RPATH_FLAGS="$RPATH_FLAGS -Wl,-rpath=${withval}/lib -Wl,-rpath=${withval}/lib64"],
     [CXXFLAGS="$CXXFLAGS"
      STACKWALKERPREFIX="${withval}"]
   )
@@ -137,9 +137,9 @@ AC_DEFUN([X_AC_DEBUGLIBS], [
   )
   LDFLAGS=$TMP_LDFLAGS
   if test "$libstackwalk_found" = yes; then
-    BELIBS="-ldyninstAPI -lstackwalk -lpcontrol -lparseAPI -linstructionAPI -lsymtabAPI -lcommon -ldynElf -ldynDwarf -lsymLite $BELIBS"
+    BELIBS="-ldyninstAPI -lstackwalk -lpcontrol -lparseAPI -linstructionAPI -lsymtabAPI -lcommon -ldynElf -ldynDwarf -lsymLite -ltbb $BELIBS"
   else
-    LDFLAGS="$LDFLAGS -lstackwalk -lsymtabAPI -lpcontrol -lparseAPI -linstructionAPI -lcommon -lpthread"
+    LDFLAGS="$LDFLAGS -lstackwalk -lsymtabAPI -lpcontrol -lparseAPI -linstructionAPI -lcommon -ltbb -lpthread"
     AC_LINK_IFELSE([AC_LANG_PROGRAM(#include "walker.h"
       using namespace Dyninst;
       using namespace Dyninst::Stackwalker;
@@ -149,7 +149,7 @@ AC_DEFUN([X_AC_DEBUGLIBS], [
     )
     LDFLAGS=$TMP_LDFLAGS
     if test "$libstackwalk_found" = yes; then
-      BELIBS="-ldyninstAPI -lstackwalk -lsymtabAPI -lpcontrol -lparseAPI -linstructionAPI -lcommon $BELIBS"
+      BELIBS="-ldyninstAPI -lstackwalk -lsymtabAPI -lpcontrol -lparseAPI -linstructionAPI -lcommon -ltbb $BELIBS"
     else
       LDFLAGS="$LDFLAGS -lstackwalk -lsymtabAPI -lcommon -lpthread"
       AC_LINK_IFELSE([AC_LANG_PROGRAM(#include "walker.h"
@@ -161,7 +161,7 @@ AC_DEFUN([X_AC_DEBUGLIBS], [
       )
       LDFLAGS=$TMP_LDFLAGS
       if test "$libstackwalk_found" = yes; then
-        BELIBS="-ldyninstAPI -lstackwalk -lsymtabAPI -lcommon $BELIBS"
+        BELIBS="-ldyninstAPI -lstackwalk -lsymtabAPI -lcommon -ltbb $BELIBS"
       else
         AC_MSG_ERROR([libstackwalk is required.  Specify libstackwalk prefix with --with-stackwalker])
       fi

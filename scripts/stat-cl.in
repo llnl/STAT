@@ -3,6 +3,7 @@
 export prefix=@prefix@
 export exec_prefix=@exec_prefix@
 
+export OMP_NUM_THREADS=1
 if test -n "$STAT_PREFIX" ; then
     export prefix=$STAT_PREFIX
 fi

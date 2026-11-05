@@ -871,11 +871,44 @@ void statDeserializeNodeAttr(const char *key, void **node, const char *buf, unsi
   strcpy((char *)*node, buf);
 }
 
+string statEscapeDotString(const string &value, bool recordLabel)
+{
+    const string recordDelimiters = "<>{}|";
+    string escaped;
+
+    for (char character : value)
+    {
+        switch (character)
+        {
+            // Escape characters that would alter the surrounding quoted DOT string.
+            case '"':
+            case '\\':
+                escaped += '\\';
+                escaped += character;
+                break;
+            case '\n':
+                escaped += "\\n";
+                break;
+            case '\r':
+                escaped += "\\r";
+                break;
+            default:
+                // Record labels also interpret these characters as fields or ports.
+                if (recordLabel && recordDelimiters.find(character) != string::npos)
+                    escaped += '\\';
+                escaped += character;
+                break;
+        }
+    }
+    return escaped;
+}
+
 char *statNodeAttrToText(const char *key, const void *node)
 {
     if (node == NULL)
         return NULL;
-    return strdup((char *)node);
+    string escaped = statEscapeDotString((const char *)node, false);
+    return strdup(escaped.c_str());
 }
 
 void *statMergeNodeAttr(const char *key, void *node1, const void *node2)

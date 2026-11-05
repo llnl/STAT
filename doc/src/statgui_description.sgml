@@ -1,8 +1,8 @@
 <![%userguide[
 <para>
-STAT includes a graphical user interface (GUI) to run STAT and to visualize STAT's outputted call prefix trees (<xref linkend="gui_screenshot">). This GUI provides a variety of operations to help focus on particular call paths and tasks of interest. It can also be used to identify the various equivalence classes and includes an interface to attach a heavyweight debugger to the representative subset of tasks.
+STAT includes a graphical user interface (GUI) to run STAT and to visualize STAT's outputted call prefix trees (<xref linkend="guiScreenshot">). This GUI provides a variety of operations to help focus on particular call paths and tasks of interest. It can also be used to identify the various equivalence classes and includes an interface to attach a heavyweight debugger to the representative subset of tasks.
 </para>
-<figure id="gui_screenshot">
+<figure id="guiScreenshot">
     <title>A screenshot of the STAT GUI</title>
     <screenshot><mediaobject><imageobject>
     <imagedata scale="40" fileref="figs/statgui_screenshot.png">

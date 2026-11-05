@@ -2,43 +2,43 @@
 <!ENTITY % userguide "INCLUDE">
 <!ENTITY % llnluserguide "INCLUDE">
 <!ENTITY % manpage "IGNORE">
-<!ENTITY stat_auspice SYSTEM "stat_auspice.sgml">
-<!ENTITY stat_license SYSTEM "stat_license.sgml">
-<!ENTITY stat_options SYSTEM "stat_options.sgml">
-<!ENTITY stat_example SYSTEM "stat_example.sgml">
-<!ENTITY stat_copyright SYSTEM "stat_copyright.sgml">
-<!ENTITY stat_description SYSTEM "stat_description.sgml">
-<!ENTITY stat_dependencies SYSTEM "stat_dependencies.sgml">
-<!ENTITY stat_installation SYSTEM "stat_installation.sgml">
-<!ENTITY stat_changelog SYSTEM "stat_changelog.sgml">
-<!ENTITY io_watchdog SYSTEM "io_watchdog.sgml">
-<!ENTITY statview_description SYSTEM "statview_description.sgml">
-<!ENTITY statview_node_menu SYSTEM "statview_node_menu.sgml">
-<!ENTITY statview_toolbar SYSTEM "statview_toolbar.sgml">
-<!ENTITY statgui_description SYSTEM "statgui_description.sgml">
-<!ENTITY statgui_options SYSTEM "statgui_options.sgml">
-<!ENTITY statgui_toolbar SYSTEM "statgui_toolbar.sgml">
-<!ENTITY statgui_sample_options SYSTEM "statgui_sample_options.sgml">
-<!ENTITY statgui_proc_tab SYSTEM "statgui_proc_tab.sgml">
-<!ENTITY statgui_eq_class SYSTEM "statgui_eq_class.sgml">
-<!ENTITY stat_llnl_availability SYSTEM "stat_llnl_availability.sgml">
-<!ENTITY statbench_options SYSTEM "statbench_options.sgml">
-<!ENTITY statbench_example SYSTEM "statbench_example.sgml">
-<!ENTITY statbench_description SYSTEM "statbench_description.sgml">
-<!ENTITY stat_script_description SYSTEM "stat_script_description.sgml">
-<!ENTITY stat_introduction SYSTEM "stat_introduction.sgml">
-<!ENTITY stat_overview SYSTEM "stat_overview.sgml">
-<!ENTITY stat_using_gui SYSTEM "stat_using_gui.sgml">
-<!ENTITY stat_preference_files SYSTEM "stat_preference_files.sgml">
-<!ENTITY stat_preferences SYSTEM "stat_preferences.sgml">
-<!ENTITY stat_environment_variables SYSTEM "stat_environment_variables.sgml">
-<!ENTITY dysectapi_overview SYSTEM "dysectapi_overview.sgml">
-<!ENTITY dysectapi_installation SYSTEM "dysectapi_installation.sgml">
-<!ENTITY dysectapi_usage SYSTEM "dysectapi_usage.sgml">
-<!ENTITY stat_troubleshoot SYSTEM "stat_troubleshoot.sgml">
-<!ENTITY stat_bibliography SYSTEM "stat_bibliography.sgml">
-<!ENTITY stat_batch_script SYSTEM "stat_batch_script.sgml">
-<!ENTITY stat_at_scale SYSTEM "stat_at_scale.sgml">
+<!ENTITY statAuspice SYSTEM "stat_auspice.sgml">
+<!ENTITY statLicense SYSTEM "stat_license.sgml">
+<!ENTITY statOptions SYSTEM "stat_options.sgml">
+<!ENTITY statExample SYSTEM "stat_example.sgml">
+<!ENTITY statCopyright SYSTEM "stat_copyright.sgml">
+<!ENTITY statDescription SYSTEM "stat_description.sgml">
+<!ENTITY statDependencies SYSTEM "stat_dependencies.sgml">
+<!ENTITY statInstallation SYSTEM "stat_installation.sgml">
+<!ENTITY statChangelog SYSTEM "stat_changelog.sgml">
+<!ENTITY ioWatchdog SYSTEM "io_watchdog.sgml">
+<!ENTITY statviewDescription SYSTEM "statview_description.sgml">
+<!ENTITY statviewNodeMenu SYSTEM "statview_node_menu.sgml">
+<!ENTITY statviewToolbar SYSTEM "statview_toolbar.sgml">
+<!ENTITY statguiDescription SYSTEM "statgui_description.sgml">
+<!ENTITY statguiOptions SYSTEM "statgui_options.sgml">
+<!ENTITY statguiToolbar SYSTEM "statgui_toolbar.sgml">
+<!ENTITY statguiSampleOptions SYSTEM "statgui_sample_options.sgml">
+<!ENTITY statguiProcTab SYSTEM "statgui_proc_tab.sgml">
+<!ENTITY statguiEqClass SYSTEM "statgui_eq_class.sgml">
+<!ENTITY statLlnlAvailability SYSTEM "stat_llnl_availability.sgml">
+<!ENTITY statbenchOptions SYSTEM "statbench_options.sgml">
+<!ENTITY statbenchExample SYSTEM "statbench_example.sgml">
+<!ENTITY statbenchDescription SYSTEM "statbench_description.sgml">
+<!ENTITY statScriptDescription SYSTEM "stat_script_description.sgml">
+<!ENTITY statIntroduction SYSTEM "stat_introduction.sgml">
+<!ENTITY statOverview SYSTEM "stat_overview.sgml">
+<!ENTITY statUusingGui SYSTEM "stat_using_gui.sgml">
+<!ENTITY statPreferenceFiles SYSTEM "stat_preference_files.sgml">
+<!ENTITY statPreferences SYSTEM "stat_preferences.sgml">
+<!ENTITY statEnvironmentVariables SYSTEM "stat_environment_variables.sgml">
+<!ENTITY dysectapiOverview SYSTEM "dysectapi_overview.sgml">
+<!ENTITY dysectapiInstallation SYSTEM "dysectapi_installation.sgml">
+<!ENTITY dysectapiUsage SYSTEM "dysectapi_usage.sgml">
+<!ENTITY statTroubleshoot SYSTEM "stat_troubleshoot.sgml">
+<!ENTITY statBibliography SYSTEM "stat_bibliography.sgml">
+<!ENTITY statBatchScript SYSTEM "stat_batch_script.sgml">
+<!ENTITY statAtScale SYSTEM "stat_at_scale.sgml">
 ]>
 
 <book>
@@ -68,79 +68,79 @@
 </bookinfo>
 <preface>
     <title>Disclaimer</title>
-    <section><title>Auspice</title>&stat_auspice</section>
-    <section><title>License</title>&stat_license</section>
+    <section><title>Auspice</title>&statAuspice</section>
+    <section><title>License</title>&statLicense</section>
 </preface>
 <chapter>
     <title>Introduction</title>
-    &stat_introduction
+    &statIntroduction
 </chapter>
 <chapter>
     <title>Overview</title>
-    &stat_overview
+    &statOverview
 </chapter>
 <chapter>
     <title>Changelog</title>
-    &stat_changelog
+    &statChangelog
 </chapter>
 <chapter>
     <title>Installing STAT</title>
-    <section><title>Dependent Packages</title>&stat_dependencies</section>
-    <section><title>Installation</title>&stat_installation</section>
+    <section><title>Dependent Packages</title>&statDependencies</section>
+    <section><title>Installation</title>&statInstallation</section>
 </chapter>
 <chapter>
     <title>Using the stat-cl Command</title>
-    <section><title>Description</title>&stat_description</section>
-    <section><title>stat-cl Options</title>&stat_options</section>
-    <section><title>STAT Usage Example</title>&stat_example</section>
+    <section><title>Description</title>&statDescription</section>
+    <section><title>stat-cl Options</title>&statOptions</section>
+    <section><title>STAT Usage Example</title>&statExample</section>
 </chapter>
 <chapter>
     <title>Using the stat-view GUI</title>
-    <section><title>Description</title>&statview_description</section>
-    <section><title>The stat-view Node Menu</title>&statview_node_menu</section>
-    <section><title>The stat-view Toolbar</title>&statview_toolbar</section>
+    <section><title>Description</title>&statviewDescription</section>
+    <section><title>The stat-view Node Menu</title>&statviewNodeMenu</section>
+    <section><title>The stat-view Toolbar</title>&statviewToolbar</section>
 </chapter>
 <chapter>
     <title>Using the stat-gui GUI</title>
-    <section><title>Description</title>&statgui_description</section>
-    <section><title>stat-gui Options</title>&statgui_options</section>
-    <section><title>The stat-gui GUI Toolbar</title>&statgui_toolbar</section>
-    <section><title>Sample Options</title>&statgui_sample_options</section>
-    <section><title>Process Table</title>&statgui_proc_tab</section>
-    <section><title>Equivalence Classes and Subset Debugging</title>&statgui_eq_class</section>
-    <![%llnluserguide[<section><title>Availability</title>&stat_llnl_availability</section>]]>
+    <section><title>Description</title>&statguiDescription</section>
+    <section><title>stat-gui Options</title>&statguiOptions</section>
+    <section><title>The stat-gui GUI Toolbar</title>&statguiToolbar</section>
+    <section><title>Sample Options</title>&statguiSampleOptions</section>
+    <section><title>Process Table</title>&statguiProcTab</section>
+    <section><title>Equivalence Classes and Subset Debugging</title>&statguiEqClass</section>
+    <![%llnluserguide[<section><title>Availability</title>&statLlnlAvailability</section>]]>
 </chapter>
 <chapter>
     <title>Setting STAT Preferences and Options</title>
-    <section><title>Preference Files</title>&stat_preference_files</section>
-    <section><title>Loading and Saving Preferences</title>&stat_preferences</section>
-    <section><title>Environment Variables</title>&stat_environment_variables</section>
+    <section><title>Preference Files</title>&statPreferenceFiles</section>
+    <section><title>Loading and Saving Preferences</title>&statPreferences</section>
+    <section><title>Environment Variables</title>&statEnvironmentVariables</section>
 </chapter>
 <chapter>
     <title>Prescription-Based Debugging With Prototype DySectAPI</title>
-    <section><title>Overview</title>&dysectapi_overview</section>
-    <section><title>Installation</title>&dysectapi_installation</section>
-    <section><title>Usage</title>&dysectapi_usage</section>
+    <section><title>Overview</title>&dysectapiOverview</section>
+    <section><title>Installation</title>&dysectapiInstallation</section>
+    <section><title>Usage</title>&dysectapiUsage</section>
 </chapter>
 <chapter>
     <title>Tips and Tricks Using STAT</title>
-    <section><title>Running STAT at scale</title>&stat_at_scale</section>
-    <section><title>Using STAT with IO Watchdog and SLURM</title>&io_watchdog</section>
-    <section><title>Running STAT in a Batch Script</title>&stat_batch_script</section>
+    <section><title>Running STAT at scale</title>&statAtScale</section>
+    <section><title>Using STAT with IO Watchdog and SLURM</title>&ioWatchdog</section>
+    <section><title>Running STAT in a Batch Script</title>&statBatchScript</section>
 </chapter>
 <chapter>
     <title>Using the stat-bench Emulator</title>
-    <section><title>Description</title>&statbench_description</section>
-    <section><title>stat-bench Options</title>&statbench_options</section>
-    <section><title>stat-bench Usage Example</title>&statbench_example</section>
+    <section><title>Description</title>&statbenchDescription</section>
+    <section><title>stat-bench Options</title>&statbenchOptions</section>
+    <section><title>stat-bench Usage Example</title>&statbenchExample</section>
 </chapter>
 <chapter>
     <title>Using the stat-script Python Interface</title>
-    <section><title>Description</title>&stat_script_description</section>
+    <section><title>Description</title>&statScriptDescription</section>
 </chapter>
 <chapter>
     <title>Troubleshooting Guide</title>
-    <section><title>Troubleshooting</title>&stat_troubleshoot</section>
+    <section><title>Troubleshooting</title>&statTroubleshoot</section>
 </chapter>
-&stat_bibliography
+&statBibliography
 </book>

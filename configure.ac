@@ -3,7 +3,7 @@
 
 AC_PREREQ(2.59)
 AC_COPYRIGHT([Copyright (c) 2007-2020, Lawrence Livermore National Security, LLC.])
-AC_INIT([STAT], [4.2.3])
+AC_INIT([STAT], [4.3.0])
 AC_CONFIG_AUX_DIR([config])
 AC_CONFIG_SRCDIR([configure.ac])
 AC_CONFIG_HEADER([config.h])
@@ -11,13 +11,13 @@ AC_CONFIG_MACRO_DIR([config])
 AM_INIT_AUTOMAKE
 AC_CANONICAL_HOST
 AX_CODE_COVERAGE
+LT_INIT
 
 # Checks for programs.
 AC_PROG_CXX
 AC_PROG_CC
 AC_PROG_FC
 AC_PROG_INSTALL
-AC_DISABLE_STATIC
 AC_PROG_LIBTOOL
 X_AC_RSH
 X_AC_GDB
@@ -26,6 +26,13 @@ X_AC_GDB
 X_AC_TEMPORALORDERINGAPI
 X_AC_PYTHON
 AM_PATH_PYTHON
+# Resolve Python prefix references without expanding ${prefix} or ${exec_prefix}.
+case $pythondir in
+  '${PYTHON_PREFIX}'*) pythondir="$PYTHON_PREFIX${pythondir#'${PYTHON_PREFIX}'}" ;;
+esac
+case $pyexecdir in
+  '${PYTHON_EXEC_PREFIX}'*) pyexecdir="$PYTHON_EXEC_PREFIX${pyexecdir#'${PYTHON_EXEC_PREFIX}'}" ;;
+esac
 X_AC_GUI
 X_AC_BOOST
 X_AC_ARCH

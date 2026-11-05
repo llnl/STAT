@@ -29,8 +29,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 __author__ = ["Dane Gardner", "Gregory Lee <lee218@llnl.gov>", "Dorian Arnold", "Matthew LeGendre", "Dong Ahn", "Bronis de Supinski", "Barton Miller", "Martin Schulz", "Niklas Nielson", "Nicklas Bo Jensen", "Jesper Nielson"]
 __version_major__ = 4
-__version_minor__ = 2
-__version_revision__ = 3
+__version_minor__ = 3
+__version_revision__ = 0
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
 ###############################################################################
@@ -125,7 +125,7 @@ class Gdb(object):
         line = ''
         lines = []
         while True:
-            ch = self.subprocess.stdout.read(1).decode('utf-8')
+            ch = self.subprocess.stdout.read(1).decode('utf-8', errors='replace')
             if ch == '\n':
                 lines.append(line)
                 ch = ''
@@ -196,7 +196,7 @@ class GdbOneapi(Gdb):
         else:
             target_string += " %s/%s" % (self.coredir, self.corefile)
         args.append(target_string)
-        self.subprocess = subprocess.Popen(args, universal_newlines=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.subprocess = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         return self.readlines()
 
 
@@ -206,7 +206,7 @@ class CoreFile:
          group(1) = value of the frame number
          group(2) = name of the function
          group(3) = source file and line number in format "file:line"  --this value may be None"""
-    __reFrame = re.compile(r"#(\d+)\s+(?:0x\S+\s+in\s+)?(\S+)\s+\(.*\)(?:\s+at\s+(\S+:\d+))?")
+    __reFrame = re.compile(r"#(\d+)\s+(?:0x\S+\s+in\s+)?(.*?)\s+\(.*\)(?:\s+at\s+(\S+:\d+))?")
     __options = None
     _next_rank = 0
     _files = []

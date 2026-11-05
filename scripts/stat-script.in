@@ -3,6 +3,7 @@
 export prefix=@prefix@
 export exec_prefix=@exec_prefix@
 
+export OMP_NUM_THREADS=1
 if test -n "$STAT_PREFIX" ; then
     export prefix=$STAT_PREFIX
 fi
@@ -48,6 +49,13 @@ if test -z "$STAT_LMON_NEWLAUNCHMON_ENGINE_PATH" ; then
         export STAT_LMON_NEWLAUNCHMON_ENGINE_PATH=@NEWLAUNCHMONBIN@
     fi
 fi
+if test -z "$DYNINSTAPI_RT_LIB" ; then
+    if test -n "$STACKWALKER_PREFIX" ; then
+        export DYNINSTAPI_RT_LIB=$STACKWALKER_PREFIX/lib/libdyninstAPI_RT.so
+    else
+        export DYNINSTAPI_RT_LIB=@STACKWALKERPREFIX@/lib/libdyninstAPI_RT.so
+    fi
+fi
 if test -z "$STAT_MRNET_DEBUG_LOG_DIRECTORY" ; then
     export STAT_MRNET_DEBUG_LOG_DIRECTORY=/dev/null
 fi
@@ -59,6 +67,14 @@ if test -z "$LMON_FE_ENGINE_TIMEOUT" ; then
 fi
 
 export PATH=$PATH:@DOTBINDIR@
-export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
+if test -n "$PYTHONPATH" ; then
+    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@:$PYTHONPATH
+else
+    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
+fi
+
+if test -n @GSETTINGS_SCHEMA_DIR@ ; then
+    export GSETTINGS_SCHEMA_DIR=@GSETTINGS_SCHEMA_DIR@
+fi
 
 exec @STATPYTHON@ -s $@
