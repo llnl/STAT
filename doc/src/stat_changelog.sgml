@@ -1,4 +1,30 @@
 <section>
+  <title>stat version 4.3.0</title>
+  <para>
+    <itemizedlist>
+      <listitem><para>
+        GUI update to support xdot 1.6 and GTK 3
+      </para></listitem>
+      <listitem><para>
+        added tests
+      </para></listitem>
+      <listitem><para>
+        udpates to cuda-gdb and gdb-oneapi drivers
+      </para></listitem>
+      <listitem><para>
+        restore stat-bench functionality
+      </para></listitem>
+      <listitem><para>
+        updates to build system
+      </para></listitem>
+      <listitem><para>
+        numerous bug fixes
+      </para></listitem>
+    </itemizedlist>
+  </para>
+</section>
+
+<section>
   <title>stat version 4.2.2</title>
   <para>
     <itemizedlist>

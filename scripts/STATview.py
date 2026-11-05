@@ -21,8 +21,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 __author__ = ["Gregory Lee <lee218@llnl.gov>", "Dorian Arnold", "Matthew LeGendre", "Dong Ahn", "Bronis de Supinski", "Barton Miller", "Martin Schulz", "Niklas Nielson", "Nicklas Bo Jensen", "Jesper Nielson"]
 __version_major__ = 4
-__version_minor__ = 2
-__version_revision__ = 3
+__version_minor__ = 3
+__version_revision__ = 0
 __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revision__)
 
 import codecs
@@ -57,7 +57,7 @@ if os.name != 'nt':
 try:
     import xdot
 except:
-    raise Exception('STATview requires xdot\nxdot can be downloaded from https://github.com/jrfonseca/xdot.py\nWhen installing STAT via Spack, please be sure to `spack activate py-xdot`')
+    raise Exception('STATview requires xdot\nxdot can be downloaded from https://github.com/jrfonseca/xdot.py` or installed via pip')
 # old xdot vs new xdot compatibility wrapper
 try:
     xdot_ui_actions = xdot.ui.actions
