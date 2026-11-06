@@ -33,7 +33,8 @@ run_pixi() {
 # TODO: compare/verify the build options with Spack recipes as well.
 
 if [ "$step" = sources ]; then
-  clone https://github.com/LLNL/LaunchMON.git "$LAUNCHMON_SHA" LaunchMON
+  # TODO: return to upstream LaunchMON after PRs #74 and #75 are merged.
+  clone https://github.com/pramodk/LaunchMON.git "$LAUNCHMON_SHA" LaunchMON
   clone https://github.com/dyninst/mrnet.git "$MRNET_SHA" mrnet
   clone https://github.com/LLNL/graphlib.git "$GRAPHLIB_SHA" graphlib
   # TODO: using fork for now, until PR is merged.
