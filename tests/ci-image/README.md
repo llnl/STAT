@@ -19,8 +19,9 @@ GitHub Actions runs three phases on native Linux AMD64 and ARM64 runners:
    then samples the existing serial example and the two-rank MPI ring example.
    The ring runs directly under MPI and through Enroot. Each sampled DOT tree
    is printed in the CI log using the installed `stat-dot-tree` command.
-   Installation validation, serial, MPI and Enroot sampling appear as steps **3.1–3.4**,
-   each with its own log and duration. Logs and graphs are saved as CI artifacts.
+   Installation validation, serial, MPI and Enroot sampling is done as well ass
+   in Docker and Enroot: MPI ring, recursion and both OpenMP variants, with exact graph checks.
+   Integration tests print available sample trees even on failure. Logs and graphs are saved as CI artifacts.
 
 CI enables `kernel.yama.ptrace_scope=0` on its disposable runner so Dyninst can attach
 as the unprivileged container user. Before uploading artifacts, CI makes the results
@@ -56,6 +57,8 @@ docker run --rm --user 1000:1000 --cap-add SYS_PTRACE --shm-size=256m \
       /workspace /results/stat-install /results/mpi plain
     timeout --kill-after=10s 150 bash /opt/stat-ci/smoke-mpi.sh \
       /workspace /results/stat-install /results/enroot enroot
+    timeout --kill-after=10s 600 bash /workspace/tests/integration/run-tests.sh
+    timeout --kill-after=10s 600 bash /workspace/tests/integration/run-tests.sh --enroot
   '
 ```
 

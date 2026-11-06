@@ -41,10 +41,34 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Record source and architecture
+      - name: Set up shared Docker arguments and record host information
         run: |
           mkdir -p "$RUNNER_TEMP/stat-ci"
+
+          # Set up common docker arguments.
+          docker_args=(
+            --user 1000:1000
+            --cap-add SYS_PTRACE
+            --shm-size=256m
+            --security-opt seccomp=unconfined
+            --security-opt apparmor=unconfined
+            -e HOME=/tmp
+            -e ENROOT_DATA_PATH=/tmp/enroot/data
+            -e ENROOT_CACHE_PATH=/tmp/enroot/cache
+            -e ENROOT_RUNTIME_PATH=/tmp/enroot/run
+          )
+          docker_mounts=(-v "$PWD:/workspace:ro" -v "$RUNNER_TEMP/stat-ci:/results")
+
+          # Each subsequent Bash step loads these arrays automatically.
+          declare -p docker_args docker_mounts > "$RUNNER_TEMP/stat-ci/docker-env.sh"
+
+          echo "BASH_ENV=$RUNNER_TEMP/stat-ci/docker-env.sh" >> "$GITHUB_ENV"
+
           git rev-parse HEAD | tee "$RUNNER_TEMP/stat-ci/source-commit.txt"
+          {
+            uname -a
+            lscpu
+          } | tee "$RUNNER_TEMP/stat-ci/host-info.log"
           test "$(uname -m)" = "${{ matrix.arch }}"
 
       - name: 1.1 Set up Pixi build environment
@@ -102,8 +126,7 @@ jobs:
           # Mount the checkout read-only and install STAT into the shared results directory.
           docker run --rm \
             --platform "${{ matrix.platform }}" \
-            -v "$PWD:/workspace:ro" \
-            -v "$RUNNER_TEMP/stat-ci:/results" \
+            "${docker_mounts[@]}" \
             stat-ci:deps \
             bash /opt/stat-ci/build-stat.sh /workspace /results/stat-install \
             2>&1 | tee "$RUNNER_TEMP/stat-ci/build-stat.log"
@@ -129,17 +152,8 @@ jobs:
 
           docker run --rm \
             --platform "${{ matrix.platform }}" \
-            --user 1000:1000 \
-            --cap-add SYS_PTRACE \
-            --shm-size=256m \
-            --security-opt seccomp=unconfined \
-            --security-opt apparmor=unconfined \
-            -e HOME=/tmp \
-            -e ENROOT_DATA_PATH=/tmp/enroot/data \
-            -e ENROOT_CACHE_PATH=/tmp/enroot/cache \
-            -e ENROOT_RUNTIME_PATH=/tmp/enroot/run \
-            -v "$PWD:/workspace:ro" \
-            -v "$RUNNER_TEMP/stat-ci:/results" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
             stat-ci:deps \
             bash /opt/stat-ci/validate.sh /results/stat-install \
             2>&1 | tee "$RUNNER_TEMP/stat-ci/validation.log"
@@ -148,17 +162,8 @@ jobs:
         run: |
           docker run --rm \
             --platform "${{ matrix.platform }}" \
-            --user 1000:1000 \
-            --cap-add SYS_PTRACE \
-            --shm-size=256m \
-            --security-opt seccomp=unconfined \
-            --security-opt apparmor=unconfined \
-            -e HOME=/tmp \
-            -e ENROOT_DATA_PATH=/tmp/enroot/data \
-            -e ENROOT_CACHE_PATH=/tmp/enroot/cache \
-            -e ENROOT_RUNTIME_PATH=/tmp/enroot/run \
-            -v "$PWD:/workspace:ro" \
-            -v "$RUNNER_TEMP/stat-ci:/results" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
             stat-ci:deps \
             timeout --kill-after=10s 120 bash /opt/stat-ci/smoke-serial.sh \
               /workspace /results/stat-install /results/serial \
@@ -168,17 +173,8 @@ jobs:
         run: |
           docker run --rm \
             --platform "${{ matrix.platform }}" \
-            --user 1000:1000 \
-            --cap-add SYS_PTRACE \
-            --shm-size=256m \
-            --security-opt seccomp=unconfined \
-            --security-opt apparmor=unconfined \
-            -e HOME=/tmp \
-            -e ENROOT_DATA_PATH=/tmp/enroot/data \
-            -e ENROOT_CACHE_PATH=/tmp/enroot/cache \
-            -e ENROOT_RUNTIME_PATH=/tmp/enroot/run \
-            -v "$PWD:/workspace:ro" \
-            -v "$RUNNER_TEMP/stat-ci:/results" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
             stat-ci:deps \
             timeout --kill-after=10s 150 bash /opt/stat-ci/smoke-mpi.sh \
               /workspace /results/stat-install /results/mpi plain \
@@ -188,21 +184,32 @@ jobs:
         run: |
           docker run --rm \
             --platform "${{ matrix.platform }}" \
-            --user 1000:1000 \
-            --cap-add SYS_PTRACE \
-            --shm-size=256m \
-            --security-opt seccomp=unconfined \
-            --security-opt apparmor=unconfined \
-            -e HOME=/tmp \
-            -e ENROOT_DATA_PATH=/tmp/enroot/data \
-            -e ENROOT_CACHE_PATH=/tmp/enroot/cache \
-            -e ENROOT_RUNTIME_PATH=/tmp/enroot/run \
-            -v "$PWD:/workspace:ro" \
-            -v "$RUNNER_TEMP/stat-ci:/results" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
             stat-ci:deps \
             timeout --kill-after=10s 150 bash /opt/stat-ci/smoke-mpi.sh \
               /workspace /results/stat-install /results/enroot enroot \
             2>&1 | tee "$RUNNER_TEMP/stat-ci/enroot.log"
+
+      - name: 3.5 Integration tests on Host (via Docker)
+        run: |
+          docker run --rm \
+            --platform "${{ matrix.platform }}" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
+            stat-ci:deps \
+            timeout --kill-after=10s 600 bash /workspace/tests/integration/run-tests.sh \
+            2>&1 | tee "$RUNNER_TEMP/stat-ci/integration-mpi.log"
+
+      - name: 3.6 Integration tests inside conntainer (via Enroot)
+        run: |
+          docker run --rm \
+            --platform "${{ matrix.platform }}" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
+            stat-ci:deps \
+            timeout --kill-after=10s 600 bash /workspace/tests/integration/run-tests.sh --enroot \
+            2>&1 | tee "$RUNNER_TEMP/stat-ci/integration-enroot.log"
 
       - name: Make sampling artifacts readable
         if: always()
@@ -224,3 +231,4 @@ jobs:
             ${{ runner.temp }}/stat-ci/*/stat-cl.log
             ${{ runner.temp }}/stat-ci/*/stat_results/
             ${{ runner.temp }}/stat-ci/*/application.log
+            ${{ runner.temp }}/stat-ci/integration/
