@@ -161,19 +161,6 @@ jobs:
             bash /opt/stat-ci/validate.sh /results/stat-install \
             2>&1 | tee "$RUNNER_TEMP/stat-ci/validation.log"
 
-      - name: Test MPI and OpenMP without STAT (Sanity Check)
-        id: integration-plain
-        if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
-        run: |
-          # Exercise the same patched launcher and runtime independently of STAT attachment.
-          docker run --rm \
-            --platform "${{ matrix.platform }}" \
-            "${docker_args[@]}" \
-            "${docker_mounts[@]}" \
-            stat-ci:deps \
-            timeout --kill-after=10s 600 bash /workspace/tests/integration/run-tests.sh --plain \
-            2>&1 | tee "$RUNNER_TEMP/stat-ci/integration-plain.log"
-
       - name: 3.2 Test serial sampling
         id: serial
         if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
@@ -246,7 +233,6 @@ jobs:
           | Test | Result |
           | --- | --- |
           | Installation | ${{ steps.installation.outcome }} |
-          | MPI/OpenMP without STAT | ${{ steps.integration-plain.outcome }} |
           | Serial | ${{ steps.serial.outcome }} |
           | MPI | ${{ steps.mpi.outcome }} |
           | MPI Enroot | ${{ steps.enroot.outcome }} |

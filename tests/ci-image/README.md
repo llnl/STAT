@@ -19,7 +19,7 @@ GitHub Actions runs three phases on native Linux AMD64 and ARM64 runners:
    then samples the existing serial example and the two-rank MPI ring example.
    The ring runs directly under MPI and through Enroot. Each sampled DOT tree
    is printed in the CI log using the installed `stat-dot-tree` command.
-   Installation validation, serial, MPI and Enroot sampling is done as well ass
+   Installation validation, serial, MPI and Enroot sampling is done as well as
    in Docker and Enroot: MPI ring, recursion and both OpenMP variants, with exact graph checks.
    Integration tests print available sample trees even on failure. Logs and graphs are saved as CI artifacts.
 
