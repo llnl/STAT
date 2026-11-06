@@ -117,3 +117,5 @@ dysect-experiment*
 hostnamefn.*
 
 /tests/ci-image/pixi.lock
+
+/tests/integration/results/

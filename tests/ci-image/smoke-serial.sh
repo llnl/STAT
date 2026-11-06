@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source "$(dirname "${BASH_SOURCE[0]}")/stat-env.sh"
-
 source_dir="${1:?usage: smoke-serial.sh SOURCE_DIR INSTALL_PREFIX RESULTS_DIR}"
 prefix="${2:?missing INSTALL_PREFIX}"
 results="${3:?missing RESULTS_DIR}"

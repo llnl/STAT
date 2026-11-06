@@ -1,7 +1,7 @@
 # STAT integration tests
 
 Integtation tests check native application stacks in Docker and inside nested Enroot containers. Current
-commits ad the following tests:
+-commits ad the following tests:
 
 | Test | Checks |
 | --- | --- |
@@ -13,7 +13,7 @@ Each README contains executable JSON expectations. The shared validator checks e
 snapshot for rank coverage, connected call paths and expected process/thread counts.
 See [check syntax](TEST-CHECKS-FORMAT.md) to change an expectation or recheck saved results.
 
-## Run
+## Docker and Enroot
 
 Build the dependency image and install the checkout using the commands in
 [the CI image README](../ci-image/README.md). Then run the suite from the checkout root:
@@ -34,25 +34,3 @@ Each uses two samples and waits for successful application completion after deta
 or `03:threads`. `--dry-run` lists the selected scenarios without starting programs.
 
 The host must allow ptrace and unprivileged user namespaces, as described in the CI README.
-
-## Results
-
-Every invocation creates a new directory under `/results/integration`. It saves the
-configuration, workload scripts, README expectations, compiler and application logs,
-STAT logs and graphs, plus `summary.tsv`. Nonzero statuses are failures; missing tools
-fail rather than silently skipping a CI scenario. The runner continues after individual
-failures and returns nonzero if any scenario failed. Each scenario has a configured timeout.
-
-Every available sample tree is printed with `stat-dot-tree`, whether the scenario passes or fails.
-Recheck a saved scenario with:
-
-```bash
-python3 tests/integration/lib/validate_stat.py \
-  --checks "$run_dir/README.md" --check-set threads \
-  --output "$run_dir/validation.log" --results "$run_dir" \
-  --backend dyninst --world-size 4 --num-threads 4 --sample-count 2
-```
-
-This suite covers native single-node Docker/Enroot execution. MPI-fork test 04 requires
-`--with-children`, which is not available in this upstream base. Fork sampling, Slurm, direct
-multi-node MPI, GPU and Python-backend workloads follow separately.

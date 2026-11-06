@@ -43,7 +43,16 @@ trap 'exit 143' TERM
 
 # Preserve compiler diagnostics and the exact workload used by this run.
 build_workload > "$RUN_DIR/compiler.log" 2>&1
-launcher=("${MPI_LAUNCHER[@]}" -n "$ranks")
+if [ "$EXECUTION" = slurm ]; then
+  launcher=(srun --mpi="$MPI_MODE" --nodes="$NODES" --ntasks="$ranks"
+            --cpus-per-task="$OMP_NUM_THREADS" --kill-on-bad-exit=1)
+else
+  launcher=("${MPI_LAUNCHER[@]}" -n "$ranks")
+  if [ "$EXECUTION" = local ]; then
+    hosts=$(IFS=,; echo "${HOSTS[*]}")
+    launcher+=(--host "$hosts")
+  fi
+fi
 if [ "$rank_container" = enroot ]; then
   launcher+=(enroot start --conf "$TEST_DIR/../../ci-image/mpi-enroot.conf"
              --mount /results:/results --mount /tmp:/tmp "$STAT_TEST_ENROOT_NAME")

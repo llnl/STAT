@@ -50,7 +50,7 @@ FROM libraries AS runtime
 # MPI runs inside Docker and inside an Enroot image with matching MPI libraries.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-         gcc g++ openmpi-bin libopenmpi-dev \
+         gcc g++ python3 graphviz openmpi-bin libopenmpi-dev \
          jq squashfs-tools parallel libcap2-bin \
     && case "$TARGETARCH" in \
       amd64) sha=5955c51e88df0c5ed538d87abb5264609d4bad55fa8570745ed5d4ec66c8ab91 ;; \
@@ -87,6 +87,8 @@ COPY tests/ci-image/build-stat.sh \
     tests/ci-image/mpi-enroot.conf \
     /opt/stat-ci/
 
-ENV BASH_ENV=/opt/stat-ci/stat-env.sh
+# Build scripts activate Pixi explicitly; MPI workloads use the Ubuntu runtime.
+ENV PATH=/results/stat-install/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    LD_LIBRARY_PATH=/results/stat-install/lib
 WORKDIR /workspace
 CMD ["bash"]
