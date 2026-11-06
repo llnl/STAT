@@ -2,6 +2,7 @@
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+export STAT_TEST_ROOT="$root"
 config="$root/config-container.sh"
 mode=stat
 rank_container=plain
@@ -24,6 +25,14 @@ while [ "$#" -gt 0 ]; do
 done
 config=$(realpath "$config")
 source "$config"
+case "$EXECUTION" in
+  container|local|slurm) ;;
+  *) echo "Unknown EXECUTION: $EXECUTION" >&2; exit 2 ;;
+esac
+if [ "$rank_container" = enroot ] && [ "$EXECUTION" != container ]; then
+  echo "--enroot requires the container profile" >&2
+  exit 2
+fi
 [ "${#selected[@]}" -gt 0 ] || selected=(01 02 03)
 
 # Resolve the complete matrix before starting workloads or creating results.
@@ -36,6 +45,13 @@ for selection in "${selected[@]}"; do
     03) test_dir="$root/03-mpi-openmp" ;;
     *) echo "Unknown test: $id" >&2; exit 2 ;;
   esac
+  if [ "$EXECUTION" = slurm ]; then
+    setting="TEST_RANKS_$id"
+    if [ "${!setting}" -lt "$NODES" ]; then
+      echo "Test $id needs at least $NODES ranks for $NODES nodes" >&2
+      exit 2
+    fi
+  fi
   source "$test_dir/run.sh"
   variants=("${VARIANTS[@]}")
   if [[ "$selection" == *:* ]]; then
@@ -56,6 +72,33 @@ if [ "$dry_run" = 1 ]; then
 fi
 
 mkdir -p "$RESULTS_ROOT"
+
+if [ "$EXECUTION" = slurm ] && [ -z "${SLURM_JOB_ID:-}" ]; then
+  echo "Slurm log: $RESULTS_ROOT/slurm-<job-id>.log"
+
+  allocation_ranks=0
+  for entry in "${cases[@]}"; do
+    id="${entry%:*}"
+    id="${id##*/}"
+    setting="TEST_RANKS_${id%%-*}"
+    [ "${!setting}" -le "$allocation_ranks" ] || allocation_ranks="${!setting}"
+  done
+
+  exec sbatch \
+    --wait \
+    --parsable \
+    --nodes="$NODES" \
+    --time="$JOB_TIME" \
+    --ntasks="$allocation_ranks" \
+    --cpus-per-task="$OMP_NUM_THREADS" \
+    "${SBATCH_OPTIONS[@]}" \
+    --output="$RESULTS_ROOT/slurm-%j.log" \
+    "$root/lib/run-slurm.sh" \
+    "$root/run-tests.sh" \
+    --config "$config" \
+    "--$mode" \
+    "${selected[@]}"
+fi
 results=$(mktemp -d "$RESULTS_ROOT/$rank_container-$mode.XXXXXX")
 cp "$config" "$results/config.sh"
 printf 'scenario\texit_status\n' > "$results/summary.tsv"
