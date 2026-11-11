@@ -2,7 +2,6 @@
 set -euo pipefail
 
 scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$scripts/stat-env.sh"
 
 source_dir="${1:?usage: smoke-mpi.sh SOURCE_DIR INSTALL_PREFIX RESULTS_DIR [plain|enroot]}"
 prefix="${2:?missing INSTALL_PREFIX}"
