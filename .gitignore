@@ -115,3 +115,7 @@ dysect-experiment*
 *.gcda
 *.gcno
 hostnamefn.*
+
+/tests/ci-image/pixi.lock
+
+/tests/integration/results/

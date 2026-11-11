@@ -19,3 +19,9 @@ the STAT source root as:
 python3 -c 'import _STATmerge'
 python3 -m unittest discover -s tests/unit -t .
 ```
+
+
+## Integration tests
+
+The [integration suite](integration/README.md) checks MPI rank membership, recursion
+and OpenMP thread stacks using an installed STAT, in Docker and nested Enroot.

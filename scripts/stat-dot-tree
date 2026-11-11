@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Print a STAT DOT call tree with source locations and rank lists.
+
+Example:
+    stat-dot-tree sample.dot --charset ascii
+
+    /
+    `-- main @ example.c:10 [0-1]
+        |-- compute @ example.c:20 [0]
+        `-- wait @ example.c:30 [1]
+
+Bracketed lists identify the ranks sharing each call path.
+"""
+
+import argparse
+import os
+import re
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+parser = argparse.ArgumentParser(
+    description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+)
+parser.add_argument("dot", type=Path)
+parser.add_argument("--full-path", action="store_true", help="show complete source paths instead of their last 30 characters")
+parser.add_argument(
+    "--charset", choices=("auto", "ascii", "unicode"), default="auto",
+    help="tree characters: auto uses Unicode on capable terminals and ASCII for files/pipes (default: auto)",
+)
+args = parser.parse_args()
+
+try:
+    "└─├│".encode(sys.stdout.encoding or "ascii")
+    unicode_supported = True
+except (UnicodeEncodeError, LookupError):
+    unicode_supported = False
+
+if args.charset == "unicode" and not unicode_supported:
+    parser.error("stdout encoding cannot represent Unicode tree characters; use --charset ascii")
+use_unicode = args.charset == "unicode" or (
+    args.charset == "auto" and unicode_supported
+    and sys.stdout.isatty() and os.environ.get("TERM") != "dumb"
+)
+branch, final_branch, continuation, padding = (
+    ("├─", "└─", "│  ", "   ") if use_unicode
+    else ("|--", "`--", "|   ", "    ")
+)
+
+nodes, children = {}, defaultdict(list)
+# STAT writes each node or edge on its own line; this is not a general DOT parser.
+for line in args.dot.read_text().splitlines():
+    attrs = dict(re.findall(r'(\w+)="((?:\\.|[^"\\])*)"', line))
+    edge = re.match(r"\s*(-?\d+) -> (-?\d+)", line)
+    node = re.match(r"\s*(-?\d+) \[", line)
+    if edge:
+        children[edge[1]].append((edge[2], attrs.get("bv", "?")))
+    elif node:
+        name = attrs.get("function", attrs.get("label", "?"))
+        source = attrs.get("source", "")
+        lineno = attrs.get("line", "").lstrip(":")
+        if source not in ("", "(null)", "?"):
+            if not args.full_path and len(source) > 30:
+                source = "..." + source[-30:]
+            name += f" @ {source}"
+            if lineno not in ("", "(null)", "?"):
+                name += f":{lineno}"
+        nodes[node[1]] = name
+
+
+def show(node, prefix=""):
+    for index, (child, ranks) in enumerate(children[node]):
+        last = index == len(children[node]) - 1
+        print(f"{prefix}{final_branch if last else branch} {nodes[child]} {ranks}")
+        show(child, prefix + (padding if last else continuation))
+
+
+print(nodes["0"])
+show("0")

@@ -1,58 +1,265 @@
-name: A workflow for CI testing of a STAT commit
-#author: Gregory L. Lee <lee218@llnl.gov>
-#description: build STAT's dependences (or uses cached builds), builds STAT, and then runs STAT on a simple serial application.
-on: push
+name: STAT CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
-    name: Hello world action
-    runs-on: ubuntu-20.04
+  build-and-test:
+    name: STAT (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            platform: linux/amd64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v2
-      - name: Cache Dependences
-        id: cacher
-        uses: actions/cache@v2
+      - uses: actions/checkout@v4
         with:
-            path: /home/runner/local
-            #key: ${{ runner.os }}-${{ hashFiles('**/lockfiles') }}
-            key: ${{ runner.os }}
-      - uses: ./action-a
+          # Test the PR head itself, rather than a pinned upstream STAT revision.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up shared Docker arguments and record host information
+        run: |
+          mkdir -p "$RUNNER_TEMP/stat-ci"
+
+          # Set up common docker arguments.
+          docker_args=(
+            --user 1000:1000
+            --cap-add SYS_PTRACE
+            --shm-size=256m
+            --security-opt seccomp=unconfined
+            --security-opt apparmor=unconfined
+            -e HOME=/tmp
+            -e ENROOT_DATA_PATH=/tmp/enroot/data
+            -e ENROOT_CACHE_PATH=/tmp/enroot/cache
+            -e ENROOT_RUNTIME_PATH=/tmp/enroot/run
+          )
+          docker_mounts=(-v "$PWD:/workspace:ro" -v "$RUNNER_TEMP/stat-ci:/results")
+
+          # Each subsequent Bash step loads these arrays automatically.
+          declare -p docker_args docker_mounts > "$RUNNER_TEMP/stat-ci/docker-env.sh"
+
+          echo "BASH_ENV=$RUNNER_TEMP/stat-ci/docker-env.sh" >> "$GITHUB_ENV"
+
+          git rev-parse HEAD | tee "$RUNNER_TEMP/stat-ci/source-commit.txt"
+          {
+            uname -a
+            lscpu
+          } | tee "$RUNNER_TEMP/stat-ci/host-info.log"
+          test "$(uname -m)" = "${{ matrix.arch }}"
+
+      - name: 1.1 Set up Pixi build environment
+        uses: docker/build-push-action@v7
         with:
-          MY_NAME: "Greg"
-      - name: test cache
-        if: steps.cacher.outputs.cache-hit == 'true'
-        run: ls -l $HOME/local/lib
-      - name: Build dependences
+          context: .
+          file: tests/ci-image/Dockerfile
+          platforms: ${{ matrix.platform }}
+          build-args: JOBS=4
+          target: pixi
+          cache-from: type=gha,scope=dyninst-${{ matrix.arch }}
+
+      - name: 1.2 Build Dyninst
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: tests/ci-image/Dockerfile
+          platforms: ${{ matrix.platform }}
+          build-args: JOBS=4
+          target: dyninst
+          cache-from: type=gha,scope=dyninst-${{ matrix.arch }}
+          # Save the expensive foundation even if later builds or tests fail.
+          cache-to: type=gha,scope=dyninst-${{ matrix.arch }},mode=max,ignore-error=true
+
+      - name: 1.3 Build Graphlib, MRNet, LaunchMON & Python tools
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: tests/ci-image/Dockerfile
+          platforms: ${{ matrix.platform }}
+          build-args: JOBS=4
+          target: libraries
+          cache-from: |
+            type=gha,scope=libraries-${{ matrix.arch }}
+            type=gha,scope=dyninst-${{ matrix.arch }}
+          cache-to: type=gha,scope=libraries-${{ matrix.arch }},mode=max,ignore-error=true
+
+      - name: 1.4 Prepare MPI & Enroot
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: tests/ci-image/Dockerfile
+          platforms: ${{ matrix.platform }}
+          build-args: JOBS=4
+          target: runtime
+          load: true
+          tags: stat-ci:deps
+          # Re-import external cache: earlier cache-only builds may leave layers remote.
+          cache-from: |
+            type=gha,scope=libraries-${{ matrix.arch }}
+            type=gha,scope=dyninst-${{ matrix.arch }}
+
+      - name: 2. Build STAT
+        id: build-stat
         run: |
-            sudo apt-get update
-            sudo apt-get install graphviz
-            sudo apt-get install libboost-all-dev
-            sudo apt-get install elfutils
-            sudo apt-get install libelf-dev
-            sudo apt-get install libgcrypt-dev
-            sudo apt-get install build-essential
-            sudo apt-get install texlive
-            sudo apt-get install binutils-dev
-            sudo apt-get install libiberty-dev
-            sudo apt-get install mpich
-            sudo apt-get install slurm
-            sudo apt-get install pkg-config
-            sudo apt-get install python python-dev
-      - shell: bash
-        if: steps.cacher.outputs.cache-hit != 'true'
-        run: ./.github/scripts/builddeps.sh
-      - shell: bash
+          # Mount the checkout read-only and install STAT into the shared results directory.
+          docker run --rm \
+            --platform "${{ matrix.platform }}" \
+            "${docker_mounts[@]}" \
+            stat-ci:deps \
+            bash /opt/stat-ci/build-stat.sh /workspace /results/stat-install \
+            2>&1 | tee "$RUNNER_TEMP/stat-ci/build-stat.log"
+
+      - name: Enable ptrace and Enroot user namespaces
         run: |
-          set -x
-          ls -l ./
-          ./bootstrap
-          ./configure --prefix=$HOME/install --with-graphlib=$HOME/local --with-stackwalker=$HOME/local --with-mrnet=$HOME/local --with-launchmon=$HOME/local --disable-examples || cat config.log
-          make -j
-          make install
-          export LD_LIBRARY_PATH=$HOME/local/lib
-          $HOME/install/bin/stat-cl --help
-          echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope || echo failed
-          gcc -g examples/src/serial.c -o a.out
-          ./a.out &
-          $HOME/install/bin/stat-cl -I $!
-          cat stat_results/output.0000/00_output.0000.2D.dot
-          cat stat_results/output.0000/*.dot
+          # Allow Dyninst to attach to sibling processes on this disposable runner.
+          sudo sysctl -w kernel.yama.ptrace_scope=0
+
+          # Allow nested Enroot containers on this disposable GitHub runner.
+          if [ -e /proc/sys/kernel/unprivileged_userns_clone ]; then
+            sudo sysctl -w kernel.unprivileged_userns_clone=1
+          fi
+
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: 3.1 Validate installation
+        id: installation
+        if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
+        run: |
+          # Allow the container user to write logs and sampled graphs.
+          chmod a+w "$RUNNER_TEMP/stat-ci"
+
+          docker run --rm \
+            --platform "${{ matrix.platform }}" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
+            stat-ci:deps \
+            bash /opt/stat-ci/validate.sh /results/stat-install \
+            2>&1 | tee "$RUNNER_TEMP/stat-ci/validation.log"
+
+      - name: 3.2 Test serial sampling
+        id: serial
+        if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
+        run: |
+          docker run --rm \
+            --platform "${{ matrix.platform }}" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
+            stat-ci:deps \
+            timeout --kill-after=10s 120 bash /opt/stat-ci/smoke-serial.sh \
+              /workspace /results/stat-install /results/serial \
+            2>&1 | tee "$RUNNER_TEMP/stat-ci/serial.log"
+
+      - name: 3.3 Test MPI sampling
+        id: mpi
+        if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
+        run: |
+          docker run --rm \
+            --platform "${{ matrix.platform }}" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
+            stat-ci:deps \
+            timeout --kill-after=10s 150 bash /opt/stat-ci/smoke-mpi.sh \
+              /workspace /results/stat-install /results/mpi plain \
+            2>&1 | tee "$RUNNER_TEMP/stat-ci/mpi.log"
+
+      - name: 3.4 Test MPI sampling inside Enroot
+        id: enroot
+        if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
+        run: |
+          docker run --rm \
+            --platform "${{ matrix.platform }}" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
+            stat-ci:deps \
+            timeout --kill-after=10s 150 bash /opt/stat-ci/smoke-mpi.sh \
+              /workspace /results/stat-install /results/enroot enroot \
+            2>&1 | tee "$RUNNER_TEMP/stat-ci/enroot.log"
+
+      - name: 3.5 Integration tests on Host (via Docker)
+        id: integration-docker
+        if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
+        run: |
+          docker run --rm \
+            --platform "${{ matrix.platform }}" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
+            stat-ci:deps \
+            timeout --kill-after=10s 600 bash /workspace/tests/integration/run-tests.sh \
+            2>&1 | tee "$RUNNER_TEMP/stat-ci/integration-mpi.log"
+
+      - name: 3.6 Integration tests inside conntainer (via Enroot)
+        id: integration-enroot
+        if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
+        run: |
+          docker run --rm \
+            --platform "${{ matrix.platform }}" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
+            stat-ci:deps \
+            timeout --kill-after=10s 600 bash /workspace/tests/integration/run-tests.sh --enroot \
+            2>&1 | tee "$RUNNER_TEMP/stat-ci/integration-enroot.log"
+
+      - name: Summarize validation results
+        if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
+        env:
+          RESULT: ${{ job.status == 'success' && 'PASS' || 'FAIL' }}
+        run: |
+          cat <<'RESULTS' | tee "$RUNNER_TEMP/stat-ci/test-summary.log" >> "$GITHUB_STEP_SUMMARY"
+          | Test | Result |
+          | --- | --- |
+          | Installation | ${{ steps.installation.outcome }} |
+          | Serial | ${{ steps.serial.outcome }} |
+          | MPI | ${{ steps.mpi.outcome }} |
+          | MPI Enroot | ${{ steps.enroot.outcome }} |
+          | Integration Docker | ${{ steps.integration-docker.outcome }} |
+          | Integration Enroot | ${{ steps.integration-enroot.outcome }} |
+          RESULTS
+          echo "$RESULT: validation" | tee -a "$RUNNER_TEMP/stat-ci/test-summary.log" "$GITHUB_STEP_SUMMARY"
+          test "$RESULT" = PASS
+
+      - name: Make sampling artifacts readable
+        if: always()
+        run: |
+          # STAT creates private directories as container UID 1000, which may differ from the runner UID.
+          if [ -d "$RUNNER_TEMP/stat-ci" ]; then
+            sudo chmod -R a+rX "$RUNNER_TEMP/stat-ci"
+          fi
+
+      - name: Save logs and sampling results
+        # Preserve diagnostics even when a build or smoke test fails.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stat-ci-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/stat-ci/*.log
+            ${{ runner.temp }}/stat-ci/source-commit.txt
+            ${{ runner.temp }}/stat-ci/*/stat-cl.log
+            ${{ runner.temp }}/stat-ci/*/stat_results/
+            ${{ runner.temp }}/stat-ci/*/application.log
+            ${{ runner.temp }}/stat-ci/integration/
