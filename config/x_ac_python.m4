@@ -1,4 +1,3 @@
-
 AC_DEFUN([X_AC_PYTHON], [
   AM_CONDITIONAL([ENABLE_PYTHON2], false)
   AC_MSG_CHECKING([Python executable])
