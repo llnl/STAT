@@ -5,11 +5,14 @@ Example:
     stat-dot-tree sample.dot --charset ascii
 
     /
-    `-- main @ example.c:10 [0-1]
-        |-- compute @ example.c:20 [0]
-        `-- wait @ example.c:30 [1]
+    `-- main @ example.c:10 [0-1] T=2
+        |-- compute @ example.c:20 [0] T=1
+        `-- wait @ example.c:30 [1] T=1
 
-Bracketed lists identify the ranks sharing each call path.
+Bracketed lists identify the ranks sharing each call path. When available,
+T=N shows the total thread count on that path across those ranks,
+not the number of threads per rank. Counts on successive frames are not additive.
+Missing or null thread counts are omitted.
 """
 
 import argparse
@@ -54,7 +57,11 @@ for line in args.dot.read_text().splitlines():
     edge = re.match(r"\s*(-?\d+) -> (-?\d+)", line)
     node = re.match(r"\s*(-?\d+) \[", line)
     if edge:
-        children[edge[1]].append((edge[2], attrs.get("bv", "?")))
+        label = attrs.get("bv", "?")
+        thread_count = attrs.get("tcount", "")
+        if thread_count.isdecimal():
+            label += f" T={thread_count}"
+        children[edge[1]].append((edge[2], label))
     elif node:
         name = attrs.get("function", attrs.get("label", "?"))
         source = attrs.get("source", "")

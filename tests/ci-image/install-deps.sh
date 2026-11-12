@@ -10,11 +10,15 @@ export STAT_SOURCES="$STAT_CI_ROOT/stat-sources"
 export STAT_BUILD="$STAT_CI_ROOT/stat-build"
 export STAT_DOWNLOADS="$STAT_CI_ROOT/stat-downloads"
 export JOBS="${JOBS:-4}"
-step="${1:?usage: install-deps.sh STEP}"
+export CMAKE_BUILD_PARALLEL_LEVEL="$JOBS"
+step="${1:?usage: install-deps.sh STEP [SOURCE_COMPONENT]}"
+# Optionally fetch only one source checkout for the standalone installer.
+source_component="${2:-}"
 mkdir -p "$STAT_SOURCES" "$STAT_DEPS" "$STAT_BUILD" "$STAT_DOWNLOADS"
 
 clone() {
   local url="$1" sha="$2" dir="$3"
+  [[ -z "$source_component" || "$source_component" = "$dir" ]] || return 0
   if [ ! -d "$STAT_SOURCES/$dir/.git" ]; then
     git clone --no-checkout "$url" "$STAT_SOURCES/$dir"
     git -C "$STAT_SOURCES/$dir" checkout --detach "$sha"
@@ -39,7 +43,9 @@ if [ "$step" = sources ]; then
   # TODO: using fork for now, until PR is merged.
   clone https://github.com/pramodk/pystack.git "$PYSTACK_SHA" pystack
   clone https://github.com/dyninst/dyninst.git "$DYNINST_SHA" dyninst
+fi
 
+if [[ "$step" = sources && -z "$source_component" ]]; then
   binutils_version=2.41
   binutils_sha=ae9a5789e23459e59606e6714723f2d3ffc31c03174191ef0d015bdf06007450
 
