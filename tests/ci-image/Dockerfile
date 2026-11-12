@@ -1,8 +1,21 @@
 # syntax=docker/dockerfile:1.7
 # Inner filesystem for MPI ranks launched through Enroot.
 FROM ubuntu:24.04 AS inner
-RUN apt-get update && apt-get install -y --no-install-recommends openmpi-bin libopenmpi-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      openmpi-bin libopenmpi-dev python3-venv ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Keep workload Python separate from Pixi's STAT build environment; both containers use the same CPU wheels.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3 -m venv /opt/stat-workloads \
+    && /opt/stat-workloads/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
+
+# Register Python ranks for OpenMPI's MPIR table without changing workload entrypoints.
+RUN --mount=type=cache,target=/root/.cache/pip /opt/stat-workloads/bin/pip install mpi4py
+COPY tests/ci-image/stat_mpi_register.py tests/ci-image/stat_mpi_register.pth \
+    /opt/stat-workloads/lib/python3.12/site-packages/
+
+WORKDIR /workspace
 
 # Outer image supplies the build toolchain and STAT dependencies.
 FROM ubuntu:24.04 AS pixi
@@ -70,6 +83,7 @@ RUN objcopy --add-symbol 'orterun=.text:0,global,function' /usr/bin/orterun /tmp
 
 # Enroot needs its own root filesystem; bundle Ubuntu with matching MPI libraries for the nested MPI smoke.
 # Tests extract this image into temporary storage, avoiding image downloads during validation.
+COPY --from=inner /opt/stat-workloads /opt/stat-workloads
 COPY --from=inner / /opt/ubuntu-rootfs
 RUN mksquashfs /opt/ubuntu-rootfs /opt/ubuntu.sqsh \
       -comp zstd \
@@ -79,16 +93,21 @@ RUN mksquashfs /opt/ubuntu-rootfs /opt/ubuntu.sqsh \
       -exit-on-error \
     && rm -rf /opt/ubuntu-rootfs
 
+# Viewer unit tests use a virtual display; keep these tools out of application rank images.
+RUN apt-get update && apt-get install -y --no-install-recommends xvfb xauth \
+    && rm -rf /var/lib/apt/lists/*
+
 # Build and validation scripts consume the checkout mounted by CI; the image contains dependencies only.
 COPY tests/ci-image/build-stat.sh \
     tests/ci-image/validate.sh \
+    tests/ci-image/unit-tests.sh \
     tests/ci-image/smoke-serial.sh \
     tests/ci-image/smoke-mpi.sh \
     tests/ci-image/mpi-enroot.conf \
     /opt/stat-ci/
 
 # Build scripts activate Pixi explicitly; MPI workloads use the Ubuntu runtime.
-ENV PATH=/results/stat-install/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+ENV PATH=/results/stat-install/bin:/opt/stat-workloads/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     LD_LIBRARY_PATH=/results/stat-install/lib
 WORKDIR /workspace
 CMD ["bash"]

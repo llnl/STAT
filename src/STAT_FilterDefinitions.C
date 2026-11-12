@@ -346,7 +346,11 @@ void statMerge(vector<PacketPtr> &inputPackets,
         rank = (*currentPacket)[2]->get_int32_t();
         childrenOrder[rank] = i;
     }
-    sampleType = (*inputPackets[0])[3]->get_uint32_t();
+    /* The first daemon may have no workers to report.
+     * Use information from all daemons when combining worker stacks. */
+    sampleType = 0;
+    for (i = 0; i < inputPackets.size(); i++)
+        sampleType |= (*inputPackets[i])[3]->get_uint32_t();
     tag = inputPackets[0]->get_Tag();
 
     nChildren = inputPackets.size();
@@ -360,7 +364,13 @@ void statMerge(vector<PacketPtr> &inputPackets,
     {
         currentPacket = inputPackets[childrenOrderIter->second];
         edgeLabelWidths[i] = (*currentPacket)[1]->get_int32_t();
-        totalWidth += edgeLabelWidths[i];
+        if (sampleType & STAT_SAMPLE_PROCESS_RANKS)
+        {
+            if (edgeLabelWidths[i] > totalWidth)
+                totalWidth = edgeLabelWidths[i];
+        }
+        else
+            totalWidth += edgeLabelWidths[i];
     }
 
     if (tag == PROT_SEND_NODE_IN_EDGE_RESP)
@@ -389,7 +399,7 @@ void statMerge(vector<PacketPtr> &inputPackets,
             byteArray = (char *)((*currentPacket)[0]->get_array(&type, &byteArrayLen));
             gStatGraphRoutinesTotalWidth = totalWidth;
             gStatGraphRoutinesEdgeLabelWidths = edgeLabelWidths;
-            gStatGraphRoutinesCurrentIndex = rank;
+            gStatGraphRoutinesCurrentIndex = (sampleType & STAT_SAMPLE_PROCESS_RANKS) ? 0 : rank;
             statFilterDeserializeEdge((void **)&edge, byteArray, byteArrayLen);
             statMergeEdge(retEdge, edge);
             statFreeEdge(edge);
@@ -434,7 +444,7 @@ void statMerge(vector<PacketPtr> &inputPackets,
             {
                 gStatGraphRoutinesTotalWidth = totalWidth;
                 gStatGraphRoutinesEdgeLabelWidths = edgeLabelWidths;
-                gStatGraphRoutinesCurrentIndex = rank;
+                gStatGraphRoutinesCurrentIndex = (sampleType & STAT_SAMPLE_PROCESS_RANKS) ? 0 : rank;
                 graphlibError = graphlib_deserializeBasicGraph(&currentGraph, gStatMergeFunctions, byteArray, byteArrayLen);
             }
             if (GRL_IS_FATALERROR(graphlibError))

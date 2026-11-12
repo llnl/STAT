@@ -33,6 +33,13 @@ using namespace DysectAPI;
 #endif
 
 
+// Select PyStack frame detail; -w independently controls which threads are sampled.
+typedef enum
+{
+    STAT_PYSTACK_PYTHON_ONLY = 0,    // Default: collect Python frames only.
+    STAT_PYSTACK_PYTHON_AND_NATIVE  // --native: include C/C++ frames alongside Python frames.
+} StatPyStackNativeMode_t;
+
 //! A struct to encapsulate user command line args
 typedef struct
 {
@@ -51,10 +58,14 @@ typedef struct
     bool comprehensive;                     /*!< whether to gather a comprehensive set of samples */
     bool countRep;                          /*!< whether to gather just a count and representative */
     bool withPython;                        /*!< whether to gather Python script level traces */
+    bool withPyStack;                       /*!< whether to gather Python script level traces with pystack*/
+    StatPyStackNativeMode_t pystackNativeMode; /*!< per-sample native-frame selection for PyStack */
+    bool withChildren;                      /*!< whether to gather child process traces */
     bool withThreads;                       /*!< whether to gather traces from threads */
     bool withOpenMP;                        /*!< whether to translate OpenMP stack walks */
     StatCpPolicy_t cpPolicy;                /*!< whether to use the application nodes to run communication processes */
     StatLaunch_t applicationOption;         /*!< attach or launch case */
+    StatDaemonBackend_t daemonBackend;      /*!< stack backend to initialize in STATD */
     unsigned int sampleType;                /*!< the sample level of detail */
     StatTopology_t topologyType;            /*!< the topology specification type */
 #ifdef DYSECTAPI
@@ -81,6 +92,63 @@ StatError_t parseArgs(StatArgs_t *statArgs, STAT_FrontEnd *statFrontEnd, int arg
 
 //! Sleeps for requested amount of time and prints a message to inform the user
 void mySleep(int sleepTime);
+
+
+//! Builds the comma-separated backend list shown in help and invalid-option errors.
+//! Includes only collectors enabled in this build.
+static string statStackBackendChoices()
+{
+    string choices = "dyninst";
+#ifdef STAT_ENABLE_PYSTACK_BACKEND
+    choices += ", pystack";
+#endif
+    return choices;
+}
+
+//! Chooses which backend the STAT daemons use to collect stack traces
+/*!
+    Keeps the CLI sampling flags and daemon backend selection consistent.
+    For example, --pystack -C srun ... still launches the application through LaunchMON,
+    but uses PyStack to collect its stacks. The -C launch or existing-process attach choice is preserved.
+    \param[in,out] statArgs - the options to update
+    \param statFrontEnd - the STAT Frontend object used to report argument errors
+    \param backendName - "dyninst" or "pystack"; PyStack must be enabled in this build
+    \return STAT_OK on success, STAT_ARG_ERROR for an unknown or unavailable backend
+*/
+StatError_t setStackBackend(StatArgs_t *statArgs, STAT_FrontEnd *statFrontEnd, const char *backendName)
+{
+    if (backendName == NULL)
+    {
+        statFrontEnd->printMsg(STAT_ARG_ERROR, __FILE__, __LINE__, "Stack backend must be one of: %s\n", statStackBackendChoices().c_str());
+        return STAT_ARG_ERROR;
+    }
+
+    statArgs->withPyStack = false;
+    statArgs->sampleType &= ~(STAT_SAMPLE_PYSTACK);
+
+    if (strcmp(backendName, "dyninst") == 0)
+    {
+        statArgs->daemonBackend = STAT_DAEMON_BACKEND_NATIVE;
+        return STAT_OK;
+    }
+
+
+    if (strcmp(backendName, "pystack") == 0)
+    {
+#ifdef STAT_ENABLE_PYSTACK_BACKEND
+        statArgs->withPyStack = true;
+        statArgs->sampleType |= STAT_SAMPLE_PYSTACK;
+        statArgs->daemonBackend = STAT_DAEMON_BACKEND_PYSTACK;
+        return STAT_OK;
+#else
+        statFrontEnd->printMsg(STAT_ARG_ERROR, __FILE__, __LINE__, "PyStack support was not enabled in this build\n");
+        return STAT_ARG_ERROR;
+#endif
+    }
+
+    statFrontEnd->printMsg(STAT_ARG_ERROR, __FILE__, __LINE__, "Unknown stack backend '%s'; expected one of: %s\n", backendName, statStackBackendChoices().c_str());
+    return STAT_ARG_ERROR;
+}
 
 
 #ifdef DYSECTAPI
@@ -153,13 +221,14 @@ int main(int argc, char **argv)
     statFrontEnd->addPerfData(invocationString.c_str(), -1.0);
 
     /* If we're just attaching, sleep here */
-    if (statArgs->applicationOption == STAT_ATTACH || statArgs->applicationOption == STAT_SERIAL_ATTACH || statArgs->applicationOption == STAT_SERIAL_GDB_ATTACH || statArgs->applicationOption == STAT_GDB_ATTACH)
+    if (statArgs->applicationOption == STAT_ATTACH || statArgs->applicationOption == STAT_SERIAL_ATTACH || statArgs->applicationOption == STAT_SERIAL_GDB_ATTACH || statArgs->applicationOption == STAT_GDB_ATTACH || statArgs->applicationOption == STAT_PYSTACK_ATTACH || statArgs->applicationOption == STAT_SERIAL_PYSTACK_ATTACH)
         mySleep(statArgs->sleepTime);
 
     /* Launch the Daemons */
     statFrontEnd->setNDaemonsPerNode(statArgs->nDaemonsPerNode);
     statFrontEnd->setApplicationOption(statArgs->applicationOption);
-    if (statArgs->applicationOption == STAT_ATTACH || statArgs->applicationOption == STAT_GDB_ATTACH)
+    statFrontEnd->setDaemonBackend(statArgs->daemonBackend);
+    if (statArgs->applicationOption == STAT_ATTACH || statArgs->applicationOption == STAT_GDB_ATTACH || statArgs->applicationOption == STAT_PYSTACK_ATTACH)
         statError = statFrontEnd->attachAndSpawnDaemons(statArgs->pid, statArgs->remoteNode);
     else if (statArgs->applicationOption == STAT_LAUNCH)
         statError = statFrontEnd->launchAndSpawnDaemons(statArgs->remoteNode);
@@ -291,6 +360,10 @@ int main(int argc, char **argv)
 #endif
             if (statArgs->withPython == true)
                 statArgs->sampleType |= STAT_SAMPLE_PYTHON;
+            if (statArgs->withPyStack == true)
+                statArgs->sampleType |= STAT_SAMPLE_PYSTACK;
+            if (statArgs->withChildren == true)
+                statArgs->sampleType |= STAT_SAMPLE_CHILDREN;
             if (statArgs->countRep == true)
                 statArgs->sampleType |= STAT_SAMPLE_COUNT_REP;
 
@@ -322,7 +395,8 @@ int main(int argc, char **argv)
             }
 
             /* Sample the traces */
-            statError = statFrontEnd->sampleStackTraces(statArgs->sampleType, 1, statArgs->traceFrequency, statArgs->nRetries, statArgs->retryFrequency, statArgs->maxDaemonNumThreads);
+            statError = statFrontEnd->sampleStackTraces(statArgs->sampleType, 1, statArgs->traceFrequency, statArgs->nRetries, statArgs->retryFrequency, statArgs->maxDaemonNumThreads, true, "NULL",
+                    statArgs->pystackNativeMode == STAT_PYSTACK_PYTHON_AND_NATIVE ? "Python + Native" : "Python Only");
             if (statError != STAT_OK)
             {
                 if (statError == STAT_APPLICATION_EXITED)
@@ -427,8 +501,14 @@ void printUsage()
     fprintf(stderr, "  -Q, --cudaquick\t\tgather less comprehensive, but faster cuda traces\n");
 #endif
     fprintf(stderr, "  -c, --comprehensive\t\tgather 5 traces: function only; module offset;\n\t\t\t\tfunction + pc; function + line; and 3D function\n\t\t\t\tonly\n");
-    fprintf(stderr, "  -U, --countrep\t\tonly gather count and a single representative\n");
     fprintf(stderr, "  -y, --pythontrace\t\tgather Python script level stack traces\n");
+    fprintf(stderr, "  -U, --countrep\t\tonly gather count and a single representative\n");
+#ifdef STAT_ENABLE_PYSTACK_BACKEND
+    fprintf(stderr, "  -K, --pystack\t\tgather Python script level stack traces with pystack\n");
+    fprintf(stderr, "      --native\t\tinclude C/C++ frames with PyStack; -w includes native-only threads\n");
+#endif
+    fprintf(stderr, "      --backend <backend>\tselect stack backend: %s\n", statStackBackendChoices().c_str());
+    fprintf(stderr, "      --with-children\t\tsample child processes in addition to main application processes\n");
     fprintf(stderr, "  -s, --sleep <secs>\t\tsleep time before attaching and gathering traces\n");
     fprintf(stderr, "\nTopology options:\n");
     fprintf(stderr, "  -a, --autotopo\t\tlet STAT automatically create topology\n");
@@ -476,6 +556,7 @@ StatError_t parseArgs(StatArgs_t *statArgs, STAT_FrontEnd *statFrontEnd, int arg
     string remotePid, remoteHost, nProcsOpt;
     string::size_type colonPos;
     StatError_t statError;
+    enum { STAT_OPT_WITH_CHILDREN = 1000, STAT_OPT_BACKEND, STAT_OPT_NATIVE };
     struct option longOptions[] =
     {
         {"help",                no_argument,        0, 'h'},
@@ -489,6 +570,10 @@ StatError_t parseArgs(StatArgs_t *statArgs, STAT_FrontEnd *statFrontEnd, int arg
         {"comprehensive",       no_argument,        0, 'c'},
         {"withthreads",         no_argument,        0, 'w'},
         {"pythontrace",         no_argument,        0, 'y'},
+        {"pystack",             no_argument,        0, 'K'},
+        {"backend",             required_argument,  0, STAT_OPT_BACKEND},
+        {"native",              no_argument,        0, STAT_OPT_NATIVE},
+        {"with-children",       no_argument,        0, STAT_OPT_WITH_CHILDREN},
         {"autotopo",            no_argument,        0, 'a'},
         {"create",              no_argument,        0, 'C'},
         {"serial",              no_argument,        0, 'I'},
@@ -534,15 +619,17 @@ StatError_t parseArgs(StatArgs_t *statArgs, STAT_FrontEnd *statFrontEnd, int arg
     statArgs->retryFrequency = 100;
     statArgs->maxDaemonNumThreads = 512;
     statArgs->sampleType = 0;
+    statArgs->daemonBackend = STAT_DAEMON_BACKEND_NATIVE;
+    statArgs->pystackNativeMode = STAT_PYSTACK_PYTHON_ONLY;
     statArgs->topologyType = STAT_TOPOLOGY_AUTO;
     snprintf(statArgs->topologySpecification, BUFSIZE, "0");
 
     while (1)
     {
 #ifdef DYSECTAPI
-        opt = getopt_long(argc, argv,"hVvqPmiocwyaCIAxSMUGQf:n:p:j:r:R:t:T:d:F:s:l:L:u:D:z:H:X:b:Y:N:", longOptions, &optionIndex);
+        opt = getopt_long(argc, argv,"hVvqPmiocwyaCIAxSMUGQKf:n:p:j:r:R:t:T:d:F:s:l:L:u:D:z:H:X:b:Y:N:", longOptions, &optionIndex);
 #else
-        opt = getopt_long(argc, argv,"hVvqPmiocwyaCIAxSMUGQf:n:p:j:r:R:t:T:d:F:s:l:L:u:D:z:H:N:", longOptions, &optionIndex);
+        opt = getopt_long(argc, argv,"hVvqPmiocwyaCIAxSMUGQKf:n:p:j:r:R:t:T:d:F:s:l:L:u:D:z:H:N:", longOptions, &optionIndex);
 #endif
         if (opt == -1)
             break;
@@ -579,6 +666,27 @@ StatError_t parseArgs(StatArgs_t *statArgs, STAT_FrontEnd *statFrontEnd, int arg
         case 'y':
             statArgs->withPython = true;
             statArgs->sampleType |= STAT_SAMPLE_PYTHON;
+            break;
+        case 'K':
+            // -K/--pystack is shorthand for --backend pystack.
+            statError = setStackBackend(statArgs, statFrontEnd, "pystack");
+            if (statError != STAT_OK)
+                return statError;
+            break;
+        case STAT_OPT_BACKEND:
+            // Select the daemon sampler independently of launch or attach mode.
+            statError = setStackBackend(statArgs, statFrontEnd, optarg);
+            if (statError != STAT_OK)
+                return statError;
+            break;
+        case STAT_OPT_NATIVE:
+            // Request C/C++ frame detail; -w still controls which threads are included.
+            statArgs->pystackNativeMode = STAT_PYSTACK_PYTHON_AND_NATIVE;
+            break;
+        case STAT_OPT_WITH_CHILDREN:
+            // Include child processes independently of backend and thread selection.
+            statArgs->withChildren = true;
+            statArgs->sampleType |= STAT_SAMPLE_CHILDREN;
             break;
         case 'P':
             statArgs->sampleType |= STAT_SAMPLE_PC;
@@ -713,6 +821,7 @@ StatError_t parseArgs(StatArgs_t *statArgs, STAT_FrontEnd *statFrontEnd, int arg
 #ifdef STAT_GDB_BE
         case 'G':
             statArgs->applicationOption = STAT_GDB_ATTACH;
+            statArgs->daemonBackend = STAT_DAEMON_BACKEND_GDB;
             break;
         case 'Q':
             statArgs->withCudaQuick = true;
@@ -762,6 +871,13 @@ StatError_t parseArgs(StatArgs_t *statArgs, STAT_FrontEnd *statFrontEnd, int arg
         }; /* switch(opt) */
     } /* while (1) */
 
+    if (statArgs->pystackNativeMode == STAT_PYSTACK_PYTHON_AND_NATIVE &&
+        statArgs->daemonBackend != STAT_DAEMON_BACKEND_PYSTACK)
+    {
+        statFrontEnd->printMsg(STAT_ARG_ERROR, __FILE__, __LINE__, "--native requires --pystack or --backend pystack\n");
+        return STAT_ARG_ERROR;
+    }
+
     if (strcmp(logOutDir, "NULL") != 0 && logType != 0)
     {
         statError = statFrontEnd->startLog(logType, logOutDir);
@@ -775,10 +891,11 @@ StatError_t parseArgs(StatArgs_t *statArgs, STAT_FrontEnd *statFrontEnd, int arg
     if (optind == argc - 1 && (createJob == false && serialJob == false))
     {
 #ifdef STAT_GDB_BE
-        if (statArgs->applicationOption != STAT_GDB_ATTACH && statArgs->applicationOption != STAT_SERIAL_GDB_ATTACH)
+        if (statArgs->applicationOption != STAT_GDB_ATTACH && statArgs->applicationOption != STAT_SERIAL_GDB_ATTACH && statArgs->applicationOption != STAT_PYSTACK_ATTACH)
             statArgs->applicationOption = STAT_ATTACH;
 #else
-        statArgs->applicationOption = STAT_ATTACH;
+        if (statArgs->applicationOption != STAT_PYSTACK_ATTACH)
+            statArgs->applicationOption = STAT_ATTACH;
 #endif
         remotePid = argv[optind++];
         colonPos = remotePid.find_first_of(":");
@@ -806,8 +923,10 @@ StatError_t parseArgs(StatArgs_t *statArgs, STAT_FrontEnd *statFrontEnd, int arg
     }
     else if (optind < argc && serialJob == true)
     {
-        if (statArgs->applicationOption == STAT_GDB_ATTACH)
+        if (statArgs->applicationOption == STAT_GDB_ATTACH || statArgs->daemonBackend == STAT_DAEMON_BACKEND_GDB)
             statArgs->applicationOption = STAT_SERIAL_GDB_ATTACH;
+        else if (statArgs->daemonBackend == STAT_DAEMON_BACKEND_PYSTACK)
+            statArgs->applicationOption = STAT_SERIAL_PYSTACK_ATTACH;
         else
             statArgs->applicationOption = STAT_SERIAL_ATTACH;
         for (i = optind; i < argc; i++)
@@ -846,4 +965,3 @@ void mySleep(int sleepTime)
         fflush(stdout);
     }
 }
-

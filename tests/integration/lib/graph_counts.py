@@ -207,13 +207,24 @@ def edge_count(paths, attribute):
     return total
 
 
-def check_path(rows, num_ranks, *, paths_any, attribute, count, source='edge', ranks=None,
+def check_path(rows, num_ranks, *, paths_any, attribute, count=None, min_count=None, source='edge', ranks=None,
                exclude_ranks=(), merged=False, process_depth=None, frame_count=None):
     """Check rank membership, counts and optional structure on matching call paths."""
+
     if attribute not in ('pcount', 'tcount') or source not in ('edge', 'ranks'):
         raise ValueError('Use pcount/tcount with source=edge or source=ranks')
+
     if source == 'ranks' and attribute != 'pcount':
         raise ValueError('source=ranks is only valid with pcount')
+
+    # Each JSON check must choose an exact count or a minimum, never both.
+    if (count is None) == (min_count is None):
+        raise ValueError('Specify exactly one of count or min_count')
+
+    # The chosen count must be a positive whole number.
+    threshold = count if min_count is None else min_count
+    if type(threshold) is not int or threshold < 1:
+        raise ValueError('Expected counts must be positive integers')
 
     expected_ranks = expected_rank_ids(num_ranks, ranks, exclude_ranks)
     matched_paths = select_paths(rows, paths_any)
@@ -224,7 +235,8 @@ def check_path(rows, num_ranks, *, paths_any, attribute, count, source='edge', r
     for path in matched_paths:
         actual_ranks.update(path['ranks'])
 
-    if actual_ranks != expected_ranks:
+    # A minimum permits partial coverage, but never ranks outside the configured set.
+    if not actual_ranks <= expected_ranks or (min_count is None and actual_ranks != expected_ranks):
         raise ValueError(f'Ranks: observed {sorted(actual_ranks)}, expected {sorted(expected_ranks)}')
 
     # Several child processes can share one rank ID. Only source=ranks deduplicates them.
@@ -235,8 +247,9 @@ def check_path(rows, num_ranks, *, paths_any, attribute, count, source='edge', r
         count_name = attribute
         actual_count = edge_count(matched_paths, attribute)
 
-    if actual_count != count:
-        raise ValueError(f'{count_name}: observed {actual_count}, expected {count}')
+    if (min_count is None and actual_count != count) or actual_count < threshold:
+        expectation = str(count) if min_count is None else f'at least {min_count}'
+        raise ValueError(f'{count_name}: observed {actual_count}, expected {expectation}')
 
     observed = {'ranks': actual_ranks, count_name: actual_count}
 
@@ -253,6 +266,6 @@ def check_path(rows, num_ranks, *, paths_any, attribute, count, source='edge', r
         observed['process_depth'] = depths
 
     if frame_count is not None:
-        frame_counts(rows, matched_paths, expected_ranks, **frame_count)
+        frame_counts(rows, matched_paths, actual_ranks, **frame_count)
 
     return observed

@@ -67,4 +67,26 @@ AC_DEFUN([X_AC_PYTHON], [
   fi
   AC_MSG_RESULT($python_version)
   AM_COND_IF([ENABLE_GDB], [BELIBS="-lpython$python_version $BELIBS"], [])
+
+  enable_pystack=no
+  pystackcmd=""
+  AC_ARG_WITH(pystack,
+    [AS_HELP_STRING([--with-pystack=path],
+      [Use explicit pystack executable path for PyStack backend]
+    )],
+    [if test "x$withval" = "xno"; then
+      pystackcmd=""
+    elif test "x$withval" = "xyes" || test "x$withval" = "x"; then
+      AC_MSG_ERROR([--with-pystack requires an explicit path; use --with-pystack=/path/to/pystack or --without-pystack])
+    elif test ! -f "$withval" || test ! -x "$withval"; then
+      AC_MSG_ERROR([pystack executable not found or not executable: $withval])
+    else
+      pystackcmd="$withval"
+      enable_pystack=yes
+      BELIBS="-lpython$python_version $BELIBS"
+    fi
+    ]
+  )
+  AM_CONDITIONAL([ENABLE_PYSTACK], [test "x$enable_pystack" = "xyes"])
+  AC_SUBST(pystackcmd)
 ])

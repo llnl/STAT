@@ -24,6 +24,9 @@ fi
 if test -z "$STAT_GDB" ; then
     export STAT_GDB=@gdbcmd@
 fi
+if test -z "$STAT_PYSTACK" && test -n "@pystackcmd@" ; then
+    export STAT_PYSTACK="@pystackcmd@"
+fi
 if test -z "$STAT_FGFS_FILTER_PATH" ; then
     if test -n "$FGFS_PREFIX" ; then
         export STAT_FGFS_FILTER_PATH=$FGFS_PREFIX/lib/libfgfs_filter.so
@@ -81,4 +84,4 @@ if test -n "$PYTHONPATH" ; then
 else
     export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
 fi
-exec @STATPYTHON@ @pythondir@/STATmain.py cl $@
+exec @STATPYTHON@ @pythondir@/STATmain.py cl "$@"
