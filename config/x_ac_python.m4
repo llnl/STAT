@@ -49,7 +49,7 @@ AC_DEFUN([X_AC_PYTHON], [
       print(sysconfig.get_path('stdlib'));"`
     AC_MSG_RESULT($python_lib_path)
     PYTHONLIB=$python_lib_path
-    LDFLAGS="$LDFLAGS -L$PYTHONLIB/../../ -Wl,-rpath=$PYTHONLIB/../../"
+    LDFLAGS="$LDFLAGS -L$PYTHONLIB/../ -Wl,-rpath=$PYTHONLIB/../"
   fi
   AC_MSG_CHECKING([Python version])
   python_version=`$PYTHON -c "import platform; \
