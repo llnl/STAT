@@ -37,19 +37,19 @@ AC_DEFUN([X_AC_PYTHON], [
   AC_SUBST(PYTHONPATH)
   AC_MSG_CHECKING([Python include dir])
   if test -z "$PYTHONINCLUDE"; then
-    python_header_path=`$PYTHON -c "import distutils.sysconfig; \
-      print(distutils.sysconfig.get_python_inc());"`
+    python_header_path=`$PYTHON -c "import sysconfig; \
+      print(sysconfig.get_path('include'));"`
     AC_MSG_RESULT($python_header_path)
     PYTHONINCLUDE=$python_header_path
     CXXFLAGS="$CXXFLAGS -I$PYTHONINCLUDE/"
   fi
   AC_MSG_CHECKING([Python lib dir])
   if test -z "$PYTHONLIB"; then
-    python_lib_path=`$PYTHON -c "import distutils.sysconfig; \
-      print(distutils.sysconfig.get_python_lib());"`
+    python_lib_path=`$PYTHON -c "import sysconfig; \
+      print(sysconfig.get_config_var('LIBDIR'));"`
     AC_MSG_RESULT($python_lib_path)
     PYTHONLIB=$python_lib_path
-    LDFLAGS="$LDFLAGS -L$PYTHONLIB/../../ -Wl,-rpath=$PYTHONLIB/../../"
+    LDFLAGS="$LDFLAGS -L$PYTHONLIB -Wl,-rpath=$PYTHONLIB"
   fi
   AC_MSG_CHECKING([Python version])
   python_version=`$PYTHON -c "import platform; \
