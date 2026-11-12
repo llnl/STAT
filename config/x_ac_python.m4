@@ -46,10 +46,10 @@ AC_DEFUN([X_AC_PYTHON], [
   AC_MSG_CHECKING([Python lib dir])
   if test -z "$PYTHONLIB"; then
     python_lib_path=`$PYTHON -c "import sysconfig; \
-      print(sysconfig.get_path('stdlib'));"`
+      print(sysconfig.get_config_var('LIBDIR'));"`
     AC_MSG_RESULT($python_lib_path)
     PYTHONLIB=$python_lib_path
-    LDFLAGS="$LDFLAGS -L$PYTHONLIB/../ -Wl,-rpath=$PYTHONLIB/../"
+    LDFLAGS="$LDFLAGS -L$PYTHONLIB -Wl,-rpath=$PYTHONLIB"
   fi
   AC_MSG_CHECKING([Python version])
   python_version=`$PYTHON -c "import platform; \
