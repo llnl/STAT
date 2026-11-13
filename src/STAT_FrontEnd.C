@@ -18,6 +18,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "config.h"
 #include "STAT_FrontEnd.h"
+#include <strings.h>
 
 using namespace std;
 using namespace MRN;
@@ -253,6 +254,7 @@ STAT_FrontEnd::STAT_FrontEnd()
     checkNodeAccess_ = false;
     verbose_ = STAT_VERBOSE_STDOUT;
     applicationOption_ = STAT_ATTACH;
+    daemonBackend_ = STAT_DAEMON_BACKEND_NATIVE;
     network_ = NULL;
     broadcastCommunicator_ = NULL;
     broadcastStream_ = NULL;
@@ -542,7 +544,7 @@ StatError_t STAT_FrontEnd::launchMrnetTree(StatTopology_t topologyType, char *to
     printMsg(STAT_VERBOSITY, __FILE__, __LINE__, "\tInitializing MRNet...\n");
     gStartTime.setTime();
 
-    if (applicationOption_ == STAT_SERIAL_ATTACH || applicationOption_ == STAT_SERIAL_GDB_ATTACH)
+    if (applicationOption_ == STAT_SERIAL_ATTACH || applicationOption_ == STAT_SERIAL_GDB_ATTACH || applicationOption_ == STAT_SERIAL_PYSTACK_ATTACH)
     {
 
 #ifdef STAT_GDB_BE
@@ -573,6 +575,33 @@ StatError_t STAT_FrontEnd::launchMrnetTree(StatTopology_t topologyType, char *to
             daemonArgv[daemonArgc - 1] = NULL;
         }
 #endif
+        if (applicationOption_ == STAT_SERIAL_PYSTACK_ATTACH)
+        {
+            // Pass the Python module search path and PyStack executable explicitly to STATD.
+            const char *pyStackCommand, *pythonPath;
+            pythonPath = getenv("PYTHONPATH");
+            if (pythonPath == NULL)
+                pythonPath = ":";
+
+            pyStackCommand = getenv("STAT_PYSTACK");
+            if (pyStackCommand == NULL)
+                pyStackCommand = "pystack";
+
+            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Using STAT PyStack attach %s, and PYTHONPATH %s\n", pyStackCommand, pythonPath);
+            daemonArgc += 4;
+
+            daemonArgv = (char **)realloc(daemonArgv, daemonArgc * sizeof(char *));
+            if (daemonArgv == NULL)
+            {
+                printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "%s malloc failed to allocate for daemon argv\n", strerror(errno));
+                return STAT_ALLOCATE_ERROR;
+            }
+            daemonArgv[daemonArgc - 5] = strdup("-P");
+            daemonArgv[daemonArgc - 4] = strdup(pythonPath);
+            daemonArgv[daemonArgc - 3] = strdup("-K");
+            daemonArgv[daemonArgc - 2] = strdup(pyStackCommand);
+            daemonArgv[daemonArgc - 1] = NULL;
+        }
         statError = addDaemonSerialProcArgs(daemonArgc, daemonArgv);
         if (statError != STAT_OK)
         {
@@ -679,7 +708,7 @@ StatError_t STAT_FrontEnd::launchMrnetTree(StatTopology_t topologyType, char *to
     }
     topologySize_ = leafInfo_.networkTopology->get_NumNodes();
 
-    if (applicationOption_ == STAT_SERIAL_ATTACH || applicationOption_ == STAT_SERIAL_GDB_ATTACH)
+    if (applicationOption_ == STAT_SERIAL_ATTACH || applicationOption_ == STAT_SERIAL_GDB_ATTACH || applicationOption_ == STAT_SERIAL_PYSTACK_ATTACH)
         topologySize_ -= nApplNodes_; /* We need topologySize_ to not include BEs */
 
     leafInfo_.daemons = applicationNodeMultiSet_;
@@ -701,7 +730,7 @@ StatError_t STAT_FrontEnd::launchMrnetTree(StatTopology_t topologyType, char *to
 
     leafInfo_.networkTopology->get_Leaves(leafInfo_.leafCps);
 
-    if (applicationOption_ != STAT_SERIAL_ATTACH && applicationOption_ != STAT_SERIAL_GDB_ATTACH)
+    if (applicationOption_ != STAT_SERIAL_ATTACH && applicationOption_ != STAT_SERIAL_GDB_ATTACH && applicationOption_ != STAT_SERIAL_PYSTACK_ATTACH)
     {
         gStartTime.setTime();
         statError = sendDaemonInfo();
@@ -1430,6 +1459,7 @@ StatError_t STAT_FrontEnd::receiveAck(bool blocking)
     }
     if (intRet != 0)
     {
+        // The acknowledgement counts failures; it does not identify their cause.
         printMsg(STAT_DAEMON_ERROR, __FILE__, __LINE__, "%d daemons reported an error\n", intRet);
         isPendingAck_ = false;
         return STAT_DAEMON_ERROR;
@@ -2065,10 +2095,10 @@ StatError_t STAT_FrontEnd::createTopology(char *topologyFileName, StatTopology_t
     /* Initialized vector iterators */
     if (topology == "") /* Flat topology */
     {
-        if (applicationOption_ != STAT_SERIAL_ATTACH && applicationOption_ != STAT_SERIAL_GDB_ATTACH)
+        if (applicationOption_ != STAT_SERIAL_ATTACH && applicationOption_ != STAT_SERIAL_GDB_ATTACH && applicationOption_ != STAT_SERIAL_PYSTACK_ATTACH)
             fprintf(file, "%s;\n", treeList[0].c_str());
     }
-    else if (topology == "0" && applicationOption_ != STAT_SERIAL_ATTACH && applicationOption_ != STAT_SERIAL_GDB_ATTACH) /* Flat topology */
+    else if (topology == "0" && applicationOption_ != STAT_SERIAL_ATTACH && applicationOption_ != STAT_SERIAL_GDB_ATTACH && applicationOption_ != STAT_SERIAL_PYSTACK_ATTACH) /* Flat topology */
         fprintf(file, "%s;\n", treeList[0].c_str());
     else
     {
@@ -2123,7 +2153,7 @@ StatError_t STAT_FrontEnd::createTopology(char *topologyFileName, StatTopology_t
         }
     }
 
-    if (applicationOption_ == STAT_SERIAL_ATTACH || applicationOption_ == STAT_SERIAL_GDB_ATTACH)
+    if (applicationOption_ == STAT_SERIAL_ATTACH || applicationOption_ == STAT_SERIAL_GDB_ATTACH || applicationOption_ == STAT_SERIAL_PYSTACK_ATTACH)
     {
         applicationNodeMultiSetIter = applicationNodeMultiSet_.begin();
         for (i = 0; i < parentCount; i++)
@@ -2478,7 +2508,7 @@ bool STAT_FrontEnd::isRunning()
     return isRunning_;
 }
 
-StatError_t STAT_FrontEnd::sampleStackTraces(unsigned int sampleType, unsigned int nTraces, unsigned int traceFrequency, unsigned int nRetries, unsigned int retryFrequency, unsigned int maxDaemonNumThreads, bool blocking, const char *variableSpecification)
+StatError_t STAT_FrontEnd::sampleStackTraces(unsigned int sampleType, unsigned int nTraces, unsigned int traceFrequency, unsigned int nRetries, unsigned int retryFrequency, unsigned int maxDaemonNumThreads, bool blocking, const char *variableSpecification, const char *pystackNativeMode)
 {
     StatError_t statError;
 
@@ -2514,7 +2544,7 @@ StatError_t STAT_FrontEnd::sampleStackTraces(unsigned int sampleType, unsigned i
     printMsg(STAT_STDOUT, __FILE__, __LINE__, "Sampling traces...\n");
     printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "%d traces with %d frequency, %d retries with %d frequency, type %d\n", nTraces, traceFrequency, nRetries, retryFrequency, sampleType);
 
-    if (broadcastStream_->send(PROT_SAMPLE_TRACES, "%ud %ud %ud %ud %ud %ud %s", nTraces, traceFrequency, nRetries, retryFrequency, sampleType, maxDaemonNumThreads, variableSpecification) == -1)
+    if (broadcastStream_->send(PROT_SAMPLE_TRACES, "%ud %ud %ud %ud %ud %ud %s %s", nTraces, traceFrequency, nRetries, retryFrequency, sampleType, maxDaemonNumThreads, variableSpecification, pystackNativeMode == NULL ? "Python Only" : pystackNativeMode) == -1)
     {
         printMsg(STAT_MRNET_ERROR, __FILE__, __LINE__, "Failed to send request to sample\n");
         return STAT_MRNET_ERROR;
@@ -2725,6 +2755,17 @@ StatError_t STAT_FrontEnd::receiveStackTraces(bool blocking)
         sortedStackTraces = stackTraces;
         stackTraces = NULL;
     }
+    else if (sampleType & STAT_SAMPLE_PROCESS_RANKS)
+    {
+        /* PyStack can discover application ranks beneath launcher tasks: for example,
+         * two Slurm tasks running torchrun may each start two workers, with global
+         * ranks 0,1 and 2,3. These edges already use those application rank IDs.
+         * Remapping them through the launcher's two-task proctab would misidentify
+         * the workers. So reuse the graph without remapping.
+         */
+        sortedStackTraces = stackTraces;
+        stackTraces = NULL;
+    }
     else
     {
         /* Translate the graphs into rank ordered bit vector */
@@ -2775,7 +2816,7 @@ StatError_t STAT_FrontEnd::receiveStackTraces(bool blocking)
         addPerfData("Graph Rank Ordering Time", (gEndTime - gStartTime).getDoubleTime());
     }
 
-    if (missingRanks_.size() > 0)
+    if (missingRanks_.size() > 0 && !(sampleType & STAT_SAMPLE_PROCESS_RANKS))
     {
         printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Adding %d missing ranks\n", missingRanks_.size());
         gStartTime.setTime();
@@ -3802,6 +3843,18 @@ void STAT_FrontEnd::setApplicationOption(StatLaunch_t applicationOption)
 StatLaunch_t STAT_FrontEnd::getApplicationOption()
 {
     return applicationOption_;
+}
+
+
+void STAT_FrontEnd::setDaemonBackend(StatDaemonBackend_t daemonBackend)
+{
+    daemonBackend_ = daemonBackend;
+}
+
+
+StatDaemonBackend_t STAT_FrontEnd::getDaemonBackend()
+{
+    return daemonBackend_;
 }
 
 

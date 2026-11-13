@@ -1,0 +1,180 @@
+<section>
+  <title>Understanding Python application stacks</title>
+
+  <para>
+    When a distributed Python application hangs or makes slow progress, a native stack may show an interpreter or
+    library routine without revealing the Python call that reached it. Work may also run in child processes or library
+    worker threads, so inspecting only the main process can leave part of the application unexplained.
+  </para>
+
+  <para>
+    STAT's <ulink url="https://github.com/bloomberg/pystack">PyStack</ulink> backend collects Python call stacks and
+    merges matching paths across ranks. This lets you compare where ranks are executing and identify ranks that follow a
+    different path.
+  </para>
+
+</section>
+
+<section>
+  <title>Build and backend selection</title>
+
+  <para>
+    For installation instructions, see
+    <ulink url="../../scripts/install_stat_with_pixi.sh">scripts/install_stat_with_pixi.sh</ulink>
+    to build all dependencies and install STAT with Pixi environment.
+  </para>
+
+  <para>
+    Install PyStack first, then pass the path to its <literal>pystack</literal> executable, not its installation directory:
+  </para>
+
+  <informalexample>
+    <screen>
+./configure &lt;other STAT options&gt; --with-pystack=/path/to/bin/pystack
+</screen>
+  </informalexample>
+
+  <itemizedlist>
+    <listitem>
+      <para>
+        PyStack support is off by default. Omitting the option or using <literal>--without-pystack</literal> leaves it
+        disabled.
+      </para>
+    </listitem>
+    <listitem>
+      <para>
+        <literal>--with-pystack=/path/to/bin/pystack</literal> enables support after checking that the file exists and is
+        executable.
+      </para>
+    </listitem>
+    <listitem>
+      <para>
+        Dyninst remains required and enabled; enabling PyStack adds another backend rather than replacing Dyninst.
+      </para>
+    </listitem>
+  </itemizedlist>
+
+  <para>
+    Building with PyStack does not change the default sampling backend. Select it with <literal>stat-cl -K</literal> or
+    <literal>stat-cl --pystack</literal>. The configured executable must be available where STAT's sampling daemons
+    run; the configure-time executable check does not validate remote runtime availability.
+  </para>
+</section>
+
+<section>
+  <title>PyStack versus child-process sampling</title>
+
+  <para>
+    Select <literal>--pystack</literal> to sample Python application processes. Add <literal>--with-children</literal>
+    to include their descendants. Child-process collection in this version requires PyStack; the child option alone
+    does not select a backend or enable Dyninst child sampling.
+  </para>
+
+  <para>
+    For a torchrun launcher in ML applications, STAT discovers and samples spawned rank processes without <literal>--with-children</literal>.
+    When workers expose consistent <literal>RANK</literal> and <literal>WORLD_SIZE</literal> environment variables,
+    STAT identifies each worker's global rank and the total worker count. Adding <literal>--with-children</literal>
+    includes each worker's descendants (e.g. data loaders) under that worker's rank.
+  </para>
+
+  <para>
+    For example, when attaching to an existing MPI launcher:
+  </para>
+
+  <informalexample>
+    <screen>
+stat-cl --pystack --with-children &lt;launcher-pid&gt;
+</screen>
+  </informalexample>
+
+  <para>
+    Child-process sampling includes descendants such as grandchildren; it does not automatically enable thread sampling.
+    Add <literal>-w</literal> separately. Filesystem helpers and their subtrees are excluded from sampling and pause control;
+    confirmed exited descendants are omitted.
+  </para>
+
+  <para>
+    STAT pauses application processes and their descendants while collecting stacks. An explicit Resume continues
+    stopped application processes. If a process cannot be resumed, STAT reports the failure and keeps track of it
+    so a later Resume or Detach can retry.
+  </para>
+
+</section>
+
+<section>
+  <title>Python and native frames</title>
+
+  <para>
+    <option>--native</option> requires the PyStack backend and can appear before or after <option>--pystack</option>.
+  </para>
+
+  <informaltable>
+    <tgroup cols="3">
+      <thead>
+        <row>
+          <entry>Frame detail</entry>
+          <entry>Without -w</entry>
+          <entry>With -w</entry>
+        </row>
+      </thead>
+      <tbody>
+        <row>
+          <entry>Python only (default)</entry>
+          <entry>Primary thread's Python stack</entry>
+          <entry>All Python threads' Python stacks</entry>
+        </row>
+        <row>
+          <entry>Python + C/C++ (<option>--native</option>)</entry>
+          <entry>Primary thread's mixed stack</entry>
+          <entry>All thread stacks, including native-only C/C++ workers</entry>
+        </row>
+      </tbody>
+    </tgroup>
+  </informaltable>
+
+  <informalexample>
+    <screen>
+stat-cl --pystack --native --with-children -w &lt;launcher-pid&gt;
+</screen>
+  </informalexample>
+</section>
+
+<section>
+  <title>Reading rank and process counts</title>
+
+  <para>
+    An edge's rank list identifies the ranks contributing to that call path. When more processes than ranks contribute,
+    STAT appends <literal>xN</literal>, where <literal>N</literal> is the total process count on that path, not a
+    per-rank multiplier or a thread count. Rank selection still uses the rank IDs in brackets. Accumulated (3D) graphs
+    count distinct process IDs on each daemon across samples, so repeatedly sampling a process does not increase its count.
+  </para>
+
+  <informaltable>
+    <tgroup cols="2">
+      <thead>
+        <row>
+          <entry>Label</entry>
+          <entry>Interpretation</entry>
+        </row>
+      </thead>
+      <tbody>
+        <row>
+          <entry><literal>[0-3]</literal></entry>
+          <entry>Ranks 0 through 3.</entry>
+        </row>
+        <row>
+          <entry><literal>[0]x3</literal></entry>
+          <entry>Rank 0, three contributing processes.</entry>
+        </row>
+        <row>
+          <entry><literal>[0,2]x8</literal></entry>
+          <entry>Ranks 0 and 2, eight processes in total; their per-rank distribution is not shown.</entry>
+        </row>
+      </tbody>
+    </tgroup>
+  </informaltable>
+
+  <para>
+    Formatted labels may also prefix the rank count: <literal>2:[0,2]x8</literal> means two ranks and eight processes.
+  </para>
+</section>

@@ -97,6 +97,8 @@ enum StatSampleOptions_t {
 #ifdef STAT_GDB_BE
     STAT_SAMPLE_CUDA_QUICK = 0x100,
 #endif
+    STAT_SAMPLE_PYSTACK = 0x400,
+    STAT_SAMPLE_CHILDREN = 0x800,
     STAT_SAMPLE_UNKNOWN=0xff
 } ;
 
@@ -105,8 +107,24 @@ typedef enum {
     STAT_ATTACH,
     STAT_SERIAL_ATTACH,
     STAT_GDB_ATTACH,
-    STAT_SERIAL_GDB_ATTACH
+    STAT_SERIAL_GDB_ATTACH,
+    STAT_PYSTACK_ATTACH,
+    STAT_SERIAL_PYSTACK_ATTACH
 } StatLaunch_t;
+
+// Expose backend constants and the setDaemonBackend()/getDaemonBackend() enum type to Python.
+// SWIG does not parse headers inside %{...%}; keep these values aligned with STAT_FrontEnd.h.
+typedef enum {
+    STAT_DAEMON_BACKEND_NATIVE = 0,
+    STAT_DAEMON_BACKEND_GDB,
+    STAT_DAEMON_BACKEND_PYSTACK
+} StatDaemonBackend_t;
+
+#ifdef STAT_ENABLE_PYSTACK_BACKEND
+%constant int STAT_PYSTACK_BACKEND_ENABLED = 1;
+#else
+%constant int STAT_PYSTACK_BACKEND_ENABLED = 0;
+#endif
 
 typedef enum {
     STAT_VERBOSE_ERROR = 0,
@@ -207,7 +225,7 @@ class STAT_FrontEnd
         StatError_t pause(bool blocking = true);
         StatError_t resume(bool blocking = true);
         bool isRunning();
-        StatError_t sampleStackTraces(unsigned int sampleType, unsigned int nTraces, unsigned int traceFrequency, unsigned int nRetries, unsigned int retryFrequency, unsigned int maxDaemonNumThreads = 1024, bool blocking = true, const char *variableSpecification = "NULL");
+        StatError_t sampleStackTraces(unsigned int sampleType, unsigned int nTraces, unsigned int traceFrequency, unsigned int nRetries, unsigned int retryFrequency, unsigned int maxDaemonNumThreads = 1024, bool blocking = true, const char *variableSpecification = "NULL", const char *pystackNativeMode = "Python Only");
         StatError_t gatherLastTrace(bool blocking = true, const char *altDotFilename = NULL);
         StatError_t gatherTraces(bool blocking = true, const char *altDotFilename = NULL);
         char *getLastDotFilename();
@@ -250,6 +268,9 @@ class STAT_FrontEnd
         StatVerbose_t getVerbose();
         void setApplicationOption(StatLaunch_t applicationOption);
         StatLaunch_t getApplicationOption();
+        // Select STATD's stack-collection backend.
+        void setDaemonBackend(StatDaemonBackend_t daemonBackend);
+        StatDaemonBackend_t getDaemonBackend();
         char *getLastErrorMessage();
         StatError_t addPerfData(const char *buf, double time);
         const char *getInstallPrefix();

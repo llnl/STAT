@@ -1425,7 +1425,12 @@ class STATGraph(xdot_ui_elements.Graph):
             return
 
         source = node.attrs["source"].split('\\n')[item]
-        cur_line_num = int(node.attrs["line"].split('\\n')[item].strip(":"))
+        # Filename-only samples have no line to highlight; request source-detail sampling.
+        try:
+            cur_line_num = int(node.attrs.get("line", "").split('\\n')[item].strip(":"))
+        except (ValueError, IndexError):
+            show_error_dialog("Source line unavailable. Resample with 'function and line' in the GUI or CLI -i.\n")
+            return
         # Reject known binary names before locating the file.
         if is_binary_source_path(source):
             show_error_dialog('Cannot view "%s" as source: it appears to be a binary file.' % source)
