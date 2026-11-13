@@ -38,7 +38,7 @@ run_pixi() {
 
 if [ "$step" = sources ]; then
   clone https://github.com/LLNL/LaunchMON.git "$LAUNCHMON_SHA" LaunchMON
-  clone https://github.com/dyninst/mrnet.git "$MRNET_SHA" mrnet
+  clone https://github.com/pramodk/mrnet.git "$MRNET_SHA" mrnet
   clone https://github.com/LLNL/graphlib.git "$GRAPHLIB_SHA" graphlib
   # TODO: using fork for now, until PR is merged.
   clone https://github.com/pramodk/pystack.git "$PYSTACK_SHA" pystack
