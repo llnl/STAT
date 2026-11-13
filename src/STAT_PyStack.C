@@ -244,8 +244,8 @@ StatError_t STAT_BackEnd::detachPyStack(unsigned int *stopArray, int stopArrayLe
 // --- Rank identity and frame metadata ---
 
 /** Decode function@source:line and return the frame identity selected by sampleType.
- * Detailed modes include source and line in identity. Function-only mode retains
- * real source filenames as display metadata without splitting equivalent functions.
+ * Detailed modes include source and line in identity and display attributes.
+ * Function-only mode omits both so viewers display only the function name.
  */
 static string getPythonFrameName(map<string, string> &nodeAttrs, const string &frame, unsigned int sampleType)
 {
@@ -273,12 +273,6 @@ static string getPythonFrameName(map<string, string> &nodeAttrs, const string &f
         nodeAttrs["source"] = source;
         nodeAttrs["line"] = line;
         return function + "@" + source + ":" + line;
-    }
-
-    if (!source.empty() && source != "stat-process-tree")
-    {
-        // Retain filename metadata for display without changing function-only merging.
-        nodeAttrs["source"] = source;
     }
 
     return function;

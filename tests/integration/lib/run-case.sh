@@ -107,7 +107,9 @@ if [ "$rank_container" = enroot ]; then
 fi
 
 interval_ms=$(LC_ALL=C awk -v seconds="$SAMPLE_INTERVAL" 'BEGIN { printf "%.0f", seconds * 1000 }')
-stat=("$STAT_PREFIX/bin/stat-cl" -i -S -t "$SAMPLE_COUNT" -T "$interval_ms")
+stat=("$STAT_PREFIX/bin/stat-cl" -S -t "$SAMPLE_COUNT" -T "$interval_ms")
+
+[ "${WITH_LINES:-1}" != 1 ] || stat+=(-i)
 [ "$BACKEND" != pystack ] || stat+=(-K)
 [ "$WITH_CHILDREN" != 1 ] || stat+=(--with-children)
 [ "${WITH_NATIVE:-0}" != 1 ] || stat+=(--native)

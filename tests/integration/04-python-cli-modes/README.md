@@ -1,7 +1,7 @@
 # PyStack: CLI launch and direct attach
 
 A small Python workload stays in `main()` → `sampled_wait()` and prints a completion record after sampling.
-It needs only Python. Both variants collect Python-only stacks without child or thread sampling:
+It needs only Python. Both variants omit `-i` to collect function-only Python stacks without child or thread sampling:
 
 - `launch`: `stat-cl -K -C <launcher> <python> ...` creates the MPI or Slurm job through LaunchMON. This checks that
   selecting PyStack preserves launch mode. `ATTACH_SETTLE_SECONDS` gives Python time to start before the first sample.
@@ -16,7 +16,9 @@ to the launch variant; serial attachment does not use `srun` or its Pyxis option
 
 The launch variant defaults to two ranks; serial always has one. Every snapshot must contain the connected application
 path for every expected rank. Completion records establish that the workload continued after STAT detached.
-The same expectations apply to both variants; `--plain` checks workload completion without invoking STAT.
+Both variants require function names only and reject nonempty source or line attributes other than Graphlib's
+`(null)` placeholders. This also keeps function-only output compatible with older STATview installations.
+`--plain` checks workload completion without invoking STAT.
 
 ```json checks:default
 {
@@ -28,9 +30,10 @@ The same expectations apply to both variants; `--plain` checks workload completi
     ]
   },
   "pystack": {
+    "forbidden": ["\\b(?:source|line)\\s*=\\s*\"(?!\\(null\\)\")[^\"]+\""],
     "each_sample": [
       {
-        "paths_any": [["<module>@test.py:*", "main@test.py:*", "sampled_wait@test.py:*"]],
+        "paths_any": [["<module>", "main", "sampled_wait"]],
         "attribute": "pcount",
         "source": "ranks",
         "count": "num_ranks"

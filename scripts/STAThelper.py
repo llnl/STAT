@@ -435,14 +435,13 @@ def node_attr_to_label(attrs, full_path = True):
     lex_string = attrs.get("lex_string")
     if lex_string is not None:
         label += "@" + attrs["lex_string"]
-    elif "source" in attrs and attrs["source"] != "(null)":
+    elif (attrs.get("source") not in (None, "", "(null)") and
+          attrs.get("line") not in (None, "", "(null)")):
         if full_path is True:
             label += "@" + attrs["source"]
         else:
             label += "@" + os.path.basename(attrs["source"])
-        # PyStack function-only samples retain the filename without a line number.
-        if attrs.get("line") not in (None, "", "(null)"):
-            label += ":" + attrs["line"]
+        label += ":" + attrs["line"]
     elif "module" in attrs and attrs["module"] != "(null)":
         if full_path is True:
             label = attrs["module"] + attrs["offset"]
