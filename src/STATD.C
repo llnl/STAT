@@ -61,7 +61,7 @@ int main(int argc, char **argv)
     {
         if (strcmp(argv[1], "-V") == 0 || strcmp(argv[1], "--version") == 0)
         {
-            printf("STATD-%d.%d.%d\n", STAT_MAJOR_VERSION, STAT_MINOR_VERSION, STAT_REVISION_VERSION);
+            printf("STATD-%d.%d.%d%s\n", STAT_MAJOR_VERSION, STAT_MINOR_VERSION, STAT_REVISION_VERSION, STAT_BUILD_SUFFIX);
             return 0;
         }
     }
@@ -103,13 +103,13 @@ int main(int argc, char **argv)
         switch(opt)
         {
         case 'h':
-            printf("STATD-%d.%d.%d\n", STAT_MAJOR_VERSION, STAT_MINOR_VERSION, STAT_REVISION_VERSION);
+            printf("STATD-%d.%d.%d%s\n", STAT_MAJOR_VERSION, STAT_MINOR_VERSION, STAT_REVISION_VERSION, STAT_BUILD_SUFFIX);
             statBackEnd->finalize();
             delete statBackEnd;
             return 0;
             break;
         case 'V':
-            printf("STATD-%d.%d.%d\n", STAT_MAJOR_VERSION, STAT_MINOR_VERSION, STAT_REVISION_VERSION);
+            printf("STATD-%d.%d.%d%s\n", STAT_MAJOR_VERSION, STAT_MINOR_VERSION, STAT_REVISION_VERSION, STAT_BUILD_SUFFIX);
             statBackEnd->finalize();
             delete statBackEnd;
             return 0;

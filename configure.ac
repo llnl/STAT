@@ -9,6 +9,7 @@ AC_CONFIG_SRCDIR([configure.ac])
 AC_CONFIG_HEADER([config.h])
 AC_CONFIG_MACRO_DIR([config])
 AM_INIT_AUTOMAKE
+X_AC_BUILD_INFO
 AC_CANONICAL_HOST
 AX_CODE_COVERAGE
 LT_INIT
@@ -141,6 +142,7 @@ AC_CONFIG_FILES([Makefile
                  man/Makefile
                  scripts/STAT
                  scripts/stat-cl
+                 scripts/stat_build_info.py
                  scripts/Makefile])
 
 if test "$WITH_GUI" = "yes"
