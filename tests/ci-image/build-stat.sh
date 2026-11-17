@@ -15,7 +15,8 @@ install_prefix="$(cd "$install_prefix" && pwd)"
 work_dir="$(mktemp -d /tmp/stat-ci-build.XXXXXX)"
 trap 'rm -rf "$work_dir"' EXIT
 mkdir -p "$work_dir/src" "$work_dir/build"
-cp -a "$source_dir/." "$work_dir/src/"
+# The container build user must own the copy so Git can inspect its metadata.
+cp -a --no-preserve=ownership "$source_dir/." "$work_dir/src/"
 source_dir="$work_dir/src"
 
 pixi run --manifest-path "$STAT_PIXI/pixi.toml" bash -euo pipefail -c '

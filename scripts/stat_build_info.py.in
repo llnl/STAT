@@ -1,0 +1,6 @@
+"""Source version recorded at configure time; importing it does not initialize STAT."""
+
+STAT_VERSION = "@PACKAGE_VERSION@"
+GIT_COMMIT = "@STAT_BUILD_COMMIT@"
+GIT_DIRTY = {"true": True, "false": False, "unknown": "unknown"}["@STAT_BUILD_DIRTY@"]
+VERSION_SUFFIX = "@STAT_BUILD_SUFFIX@"

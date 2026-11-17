@@ -563,7 +563,7 @@ StatError_t parseArgs(StatArgs_t *statArgs, STAT_FrontEnd *statFrontEnd, int arg
             return STAT_WARNING;
             break;
         case 'V':
-            printf("STAT-%d.%d.%d\n", STAT_MAJOR_VERSION, STAT_MINOR_VERSION, STAT_REVISION_VERSION);
+            printf("STAT-%d.%d.%d%s\n", STAT_MAJOR_VERSION, STAT_MINOR_VERSION, STAT_REVISION_VERSION, STAT_BUILD_SUFFIX);
             return STAT_WARNING;
             break;
         case 'v':
