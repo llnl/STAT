@@ -1,3 +1,0 @@
-<para>
-Options from a STAT session can be saved to a preferences file that can be loaded on subsequent sessions.  This can be accessed through the <GUImenu>File</GUImenu> -> <GUImenuitem>Load Preferences</GUImenuitem> and <GUImenu>File</GUImenu> -> <GUImenuitem>Save Preferences</GUImenuitem> menu items.
-</para>

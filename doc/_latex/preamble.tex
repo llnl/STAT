@@ -1,0 +1,15 @@
+% Set paragraph, heading, and figure spacing for the user guide PDF.
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.35em}
+
+\titleformat{\chapter}[hang]
+  {\Large\sffamily\bfseries\color{TitleColor}}
+  {\chaptertitlename\ \thechapter}{0.7em}{}
+\titlespacing*{\chapter}{0pt}{0pt}{14pt}
+\titlespacing*{\section}{0pt}{16pt plus 2pt minus 2pt}{7pt}
+\titlespacing*{\subsection}{0pt}{12pt plus 2pt minus 2pt}{5pt}
+
+\setlength{\textfloatsep}{12pt plus 2pt minus 2pt}
+\setlength{\intextsep}{10pt plus 2pt minus 2pt}
+
+\raggedbottom

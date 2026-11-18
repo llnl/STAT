@@ -1,0 +1,26 @@
+% Create the user guide's cover and author pages and set PDF metadata.
+\makeatletter
+\begingroup
+\hypersetup{pageanchor=false}
+\pdfstringdefDisableCommands{\def\\{, }}
+\hypersetup{pdftitle={\@title},pdfauthor={\@author}}
+\begin{titlepage}
+  \centering
+  \vspace*{\fill}
+  {\sffamily\bfseries\fontsize{19}{24}\selectfont\@title\par}
+  \vspace{14mm}
+  \sphinxincludegraphics[width=80mm]{stat_logo.png}\par
+  \vfill
+\end{titlepage}
+
+\begin{titlepage}
+  \centering
+  \vspace*{\fill}
+  {\sffamily\mdseries\fontsize{12}{16}\selectfont
+    \begin{tabular}{c}\@author\end{tabular}\par}
+  \vspace{12mm}
+  {\sffamily\small\@date\par}
+  \vfill
+\end{titlepage}
+\endgroup
+\makeatother

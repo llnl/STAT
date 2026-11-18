@@ -1,3 +1,0 @@
-<para>
-The DySectAPI comes included in STAT's source code. It can be built by turning on the <option>--enable-dysectapi</option> configure flag. DySectAPI requires DynInst library, which can be specified with the <option>--with-stackwalker=path</option> configure option.
-</para>
