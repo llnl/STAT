@@ -1,0 +1,48 @@
+name: STAT User Guide
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - 'doc/**'
+      - '.github/workflows/docs.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build HTML and PDF
+        run: |
+          docker build -t stat-user-guide doc
+          mkdir -p doc/_build/site
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/doc/_build/site:/output" stat-user-guide
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: doc/_build/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

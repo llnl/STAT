@@ -124,3 +124,7 @@ hostnamefn.*
 /scripts/gui/build/
 /scripts/gui/dist/
 /scripts/gui/*.egg-info/
+
+# Local documentation builds
+doc/venv/
+doc/_build/
