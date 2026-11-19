@@ -26,8 +26,8 @@ repository root.
 brew install python@3.13
 python3.13 -m venv doc/venv
 
-# For PDF output, install Tectonic.
-brew install tectonic
+# For PDF output, install Tectonic and the SVG converter.
+brew install tectonic librsvg
 ```
 
 ### Ubuntu 24.04
@@ -39,8 +39,8 @@ sudo apt update
 sudo apt install python3-venv
 python3 -m venv doc/venv
 
-# For PDF output, install XeLaTeX and its build tools.
-sudo apt install --no-install-recommends make latexmk texlive-xetex texlive-fonts-recommended fonts-freefont-otf
+# For PDF output, install XeLaTeX, its build tools, and the SVG converter.
+sudo apt install --no-install-recommends make latexmk texlive-xetex texlive-fonts-recommended fonts-freefont-otf librsvg2-bin
 ```
 
 ### Activate the environment on either platform

@@ -2,7 +2,7 @@
 
 STAT, the Stack Trace Analysis Tool, helps isolate bugs by gathering stack traces from each individual process of a parallel application and merging them into a global, yet compact representation.  Each stack trace, as depicted in {numref}`mergedTraces`, captures the function calling sequence of an individual process.  The nodes are labeled with the function names and the directed edges show the function calling sequence from caller to callee.  STAT's stack trace merging process forms a call graph prefix tree, which can be seen in {numref}`mergedTraces`.  The prefix tree groups together traces from different processes that have the same calling sequence and labels the edges with the count and set of tasks that exhibited that calling sequence.  Nodes in the prefix tree that are visited by the same set of tasks are given the same color, providing the user with a quick means of identifying the various process equivalence classes.
 
-```{figure} figs/trace_and_merge.png
+```{figure} figs/trace_and_merge.svg
 :name: mergedTraces
 :alt: A single stack trace (left) and a STAT merged call prefix tree (right)
 :width: 85%
@@ -12,18 +12,18 @@ A single stack trace (left) and a STAT merged call prefix tree (right)
 
 STAT merges stack traces into 2D spatial and 3D spatial-temporal call prefix trees. The 2D spatial call prefix tree ({numref}`prefixTree2d`) represents a single snapshot of the entire application. The 3D spatial-temporal call prefix tree ({numref}`prefixTree3d`) takes a series of snapshots from the application over time and is useful for analyzing time-varying behavior.
 
-```{figure} figs/bgl4k_2d.png
+```{figure} figs/bgl4k_2d.svg
 :name: prefixTree2d
 :alt: A 2D spatial call prefix tree
-:width: 85%
+:width: 100%
 
 A 2D spatial call prefix tree
 ```
 
-```{figure} figs/bgl4k_3d.png
+```{figure} figs/bgl4k_3d.svg
 :name: prefixTree3d
 :alt: A 3D spatial call prefix tree
-:width: 85%
+:width: 100%
 
 A 3D spatial call prefix tree
 ```
@@ -32,10 +32,10 @@ Stack traces based on function names only provide a high-level overview of the a
 
 In addition, line number information can be fed into a static code analysis engine to derive the logical temporal order of the MPI tasks {numref}`toExample`. This analysis traverses from the root of the tree towards the leaves, at each step analyzing the control flow of the source code and sorting sibling nodes by the amount of execution progress made through the code.  For straight-line code, this simply means that one task has made more progress if it has executed past the point of another task, i.e., if it has a greater line number. This ordering is partial since two tasks in different branches of an if-else are incomparable. In cases where the program points being compared are within a loop, STAT can extract the loop ordering variable from the application processes and further delineate tasks by execution progress. This analysis is useful for identifying the culprit in a deadlocked or livelocked application, where the problematic task has often either made the least or most progress through the code, leaving the remaining tasks stuck in a barrier or blocked pending a message. Note, this feature is still a prototype.
 
-```{figure} figs/stat_to_example.png
+```{figure} figs/stat_to_example.svg
 :name: toExample
 :alt: STAT's temporal ordering analysis engine indicates that task 1 has made the least progress.  In this example, task 1 is stuck in a compute cycle, while the other tasks are blocked in MPI communication, waiting for task 1.
-:width: 85%
+:width: 100%
 
 STAT's temporal ordering analysis engine indicates that task 1 has made the least progress.  In this example, task 1 is stuck in a compute cycle, while the other tasks are blocked in MPI communication, waiting for task 1.
 ```

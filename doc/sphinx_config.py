@@ -1,5 +1,6 @@
 """Sphinx settings for the STAT User Guide."""
 
+import sys
 from pathlib import Path
 
 DOC_DIR = Path(__file__).resolve().parent
@@ -8,7 +9,8 @@ LATEX_DIR = DOC_DIR / "_latex"
 copyright = "2007-2020, Lawrence Livermore National Security, LLC"
 
 # Markdown parsing.
-extensions = ["myst_parser"]
+sys.path.insert(0, str(DOC_DIR / "_ext"))
+extensions = ["myst_parser", "svg_to_png"]
 myst_enable_extensions = ["deflist"]
 smartquotes = False
 numfig = True

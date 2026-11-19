@@ -1,6 +1,8 @@
 **
 !requirements.txt
 !sphinx_config.py
+!_ext/
+!_ext/svg_to_png.py
 !src/
 !src/**
 !userguide/
