@@ -1,0 +1,4 @@
+# setup.py adds shared GUI Python modules, the license, and the logo.
+global-exclude *
+include pyproject.toml setup.py stat_build_info.py MANIFEST.in install.sh pixi.toml
+recursive-include stat_gui *.py

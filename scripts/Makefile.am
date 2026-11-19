@@ -16,3 +16,7 @@ endif
 if ENABLE_STATBENCH
 bin_SCRIPTS += STATBench stat-bench
 endif
+
+EXTRA_DIST = gui/pyproject.toml gui/setup.py gui/MANIFEST.in
+EXTRA_DIST += gui/stat_gui/__init__.py gui/stat_gui/entry.py gui/install.sh
+EXTRA_DIST += gui/pixi.toml

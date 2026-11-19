@@ -57,7 +57,6 @@ except Exception as e:
     HAVE_STATGUI = False
     import_exception = e
 from STAThelper import exec_and_exit
-from core_file_merger import STATmerge_main
 
 def STATmain_main(in_arg_list, command=None):
     env_var = 'STAT_BIN'
@@ -135,6 +134,7 @@ if __name__ == '__main__':
         sys.exit(0)
     elif len(sys.argv) > 1 and sys.argv[1] == 'merge':
         # TODO: this will be the hardest to modify since the argument parsing is done with internal classes
+        from core_file_merger import STATmerge_main
         STATmerge_main(sys.argv[1:])
         sys.exit(0)
 

@@ -125,6 +125,14 @@ jobs:
             type=gha,scope=libraries-${{ matrix.arch }}
             type=gha,scope=dyninst-${{ matrix.arch }}
 
+      - name: 1.5 Install GUI with pip and check startup
+        id: gui
+        run: |
+          docker run --rm --platform "${{ matrix.platform }}" \
+            -v "$PWD:/workspace:ro" stat-ci:deps \
+            bash /workspace/tests/ci-image/smoke-gui.sh /workspace \
+            2>&1 | tee "$RUNNER_TEMP/stat-ci/gui.log"
+
       - name: 2. Build STAT
         id: build-stat
         run: |
@@ -248,6 +256,7 @@ jobs:
           cat <<'RESULTS' | tee "$RUNNER_TEMP/stat-ci/test-summary.log" >> "$GITHUB_STEP_SUMMARY"
           | Test | Result |
           | --- | --- |
+          | Standalone GUI | ${{ steps.gui.outcome }} |
           | Installation | ${{ steps.installation.outcome }} |
           | Python units | ${{ steps.units.outcome }} |
           | Serial | ${{ steps.serial.outcome }} |
