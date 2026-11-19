@@ -109,6 +109,26 @@ def _set_application_identity():
         pass
 
 
+def _warn_missing_stat_core():
+    import gi
+
+    gi.require_version('Gtk', '3.0')
+    from gi.repository import Gtk
+
+    dialog = Gtk.MessageDialog(
+        modal=True,
+        message_type=Gtk.MessageType.WARNING,
+        buttons=Gtk.ButtonsType.OK,
+        text=(
+            'This is a standalone STAT GUI installation without Remote Attach support. '
+            'STATview will open so you can view saved call graphs.'
+        ),
+    )
+    dialog.set_title('STAT GUI')
+    dialog.run()
+    dialog.destroy()
+
+
 def _main(command):
     """Use the graph viewer when native collection is unavailable."""
 
@@ -117,8 +137,9 @@ def _main(command):
         print('STAT-GUI %s' % version('stat-gui'))
         return
 
-    # A desktop-only installation can view graphs without native STAT bindings.
-    if command == 'gui' and importlib.util.find_spec('STAT') is None:
+    # TODO: Use the remote attach API once it is implemented.
+    missing_stat_core = command == 'gui' and importlib.util.find_spec('STAT') is None
+    if missing_stat_core:
         command = 'view'
     if command == 'view':
         parser = argparse.ArgumentParser(
@@ -130,6 +151,9 @@ def _main(command):
     _configure_gsettings_schema_dir()
     _configure_gdk_pixbuf_loaders()
     _set_application_identity()
+
+    if missing_stat_core:
+        _warn_missing_stat_core()
 
     # Dispatch to the existing viewer or native GUI implementation.
     if command == 'view':
