@@ -81,6 +81,9 @@ StatError_t STAT_lmonFrontEnd::launchDaemons()
     lmon_rc_e lmonRet;
     lmon_rm_info_t rmInfo;
     StatError_t statError;
+    bool usePyStackBackend = (daemonBackend_ == STAT_DAEMON_BACKEND_PYSTACK ||
+                              applicationOption_ == STAT_PYSTACK_ATTACH ||
+                              applicationOption_ == STAT_SERIAL_PYSTACK_ATTACH);
 
     /* Initialize performance timer */
     addPerfData("MRNet Launch Time", -1.0);
@@ -95,7 +98,10 @@ StatError_t STAT_lmonFrontEnd::launchDaemons()
 #endif
 
 #ifdef STAT_GDB_BE
-        if (applicationOption_ == STAT_GDB_ATTACH || applicationOption_ == STAT_SERIAL_GDB_ATTACH)
+        bool useGdbBackend = (daemonBackend_ == STAT_DAEMON_BACKEND_GDB ||
+                              applicationOption_ == STAT_GDB_ATTACH ||
+                              applicationOption_ == STAT_SERIAL_GDB_ATTACH);
+        if (useGdbBackend)
         {
             // On PPC64LE systems the FE environment is not passed to the daemons.
             // We need to send PYTHONPATH for the GDB BE component.
@@ -124,7 +130,37 @@ StatError_t STAT_lmonFrontEnd::launchDaemons()
 #endif
 
 
-    if (applicationOption_ != STAT_SERIAL_ATTACH && applicationOption_ != STAT_SERIAL_GDB_ATTACH)
+        if (usePyStackBackend)
+        {
+            // Pass the PyStack executable and module path explicitly: remote daemons
+            // need not inherit the frontend environment.
+            const char *pyStackCommand, *pythonPath;
+            pythonPath = getenv("PYTHONPATH");
+
+            if (pythonPath == NULL)
+                pythonPath = ":";
+
+            pyStackCommand = getenv("STAT_PYSTACK");
+            if (pyStackCommand == NULL)
+                pyStackCommand = "pystack";
+            printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Using STAT PyStack attach %s, and PYTHONPATH %s\n", pyStackCommand, pythonPath);
+            daemonArgc += 4;
+
+            daemonArgv = (char **)realloc(daemonArgv, daemonArgc * sizeof(char *));
+            if (daemonArgv == NULL)
+            {
+                printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "%s malloc failed to allocate for daemon argv\n", strerror(errno));
+                return STAT_ALLOCATE_ERROR;
+            }
+
+            daemonArgv[daemonArgc - 5] = strdup("-P");
+            daemonArgv[daemonArgc - 4] = strdup(pythonPath);
+            daemonArgv[daemonArgc - 3] = strdup("-K");
+            daemonArgv[daemonArgc - 2] = strdup(pyStackCommand);
+            daemonArgv[daemonArgc - 1] = NULL;
+        }
+
+    if (applicationOption_ != STAT_SERIAL_ATTACH && applicationOption_ != STAT_SERIAL_GDB_ATTACH && applicationOption_ != STAT_SERIAL_PYSTACK_ATTACH)
     {
         if (iIsFirstRun == true)
         {
@@ -194,7 +230,7 @@ StatError_t STAT_lmonFrontEnd::launchDaemons()
         for (i = 0; i < daemonArgc; i++)
             printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "daemonArgv[%d] = %s\n", i, daemonArgv[i]);
 
-        if (applicationOption_ == STAT_ATTACH || applicationOption_ == STAT_GDB_ATTACH)
+        if (applicationOption_ == STAT_ATTACH || applicationOption_ == STAT_GDB_ATTACH || applicationOption_ == STAT_PYSTACK_ATTACH)
         {
             if (launcherPid_ == 0)
             {
@@ -742,4 +778,3 @@ STAT_FrontEnd *STAT_FrontEnd::make()
     return new STAT_lmonFrontEnd();
 }
 #endif
-

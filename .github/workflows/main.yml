@@ -59,8 +59,12 @@ jobs:
           )
           docker_mounts=(-v "$PWD:/workspace:ro" -v "$RUNNER_TEMP/stat-ci:/results")
 
+          # Both integration steps use this CPU-only selection: directly in Docker, then inside Enroot.
+          # TODO: Optimize the list in order to keep execution time low. E.g. split between enroot and docker.
+          integration_tests=(01 02 03 04 05 06 07 08 09 10 11)
+
           # Each subsequent Bash step loads these arrays automatically.
-          declare -p docker_args docker_mounts > "$RUNNER_TEMP/stat-ci/docker-env.sh"
+          declare -p docker_args docker_mounts integration_tests > "$RUNNER_TEMP/stat-ci/docker-env.sh"
 
           echo "BASH_ENV=$RUNNER_TEMP/stat-ci/docker-env.sh" >> "$GITHUB_ENV"
 
@@ -161,6 +165,18 @@ jobs:
             bash /opt/stat-ci/validate.sh /results/stat-install \
             2>&1 | tee "$RUNNER_TEMP/stat-ci/validation.log"
 
+      - name: Test python unit tests
+        id: units
+        if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
+        run: |
+          docker run --rm \
+            --platform "${{ matrix.platform }}" \
+            "${docker_args[@]}" \
+            "${docker_mounts[@]}" \
+            stat-ci:deps \
+            bash /opt/stat-ci/unit-tests.sh /workspace /results/stat-install \
+            2>&1 | tee "$RUNNER_TEMP/stat-ci/unit-tests.log"
+
       - name: 3.2 Test serial sampling
         id: serial
         if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
@@ -209,10 +225,10 @@ jobs:
             "${docker_args[@]}" \
             "${docker_mounts[@]}" \
             stat-ci:deps \
-            timeout --kill-after=10s 600 bash /workspace/tests/integration/run-tests.sh \
+            timeout --kill-after=10s 1200 bash /workspace/tests/integration/run-tests.sh "${integration_tests[@]}" \
             2>&1 | tee "$RUNNER_TEMP/stat-ci/integration-mpi.log"
 
-      - name: 3.6 Integration tests inside conntainer (via Enroot)
+      - name: 3.6 Integration tests in container (via Enroot)
         id: integration-enroot
         if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
         run: |
@@ -221,7 +237,7 @@ jobs:
             "${docker_args[@]}" \
             "${docker_mounts[@]}" \
             stat-ci:deps \
-            timeout --kill-after=10s 600 bash /workspace/tests/integration/run-tests.sh --enroot \
+            timeout --kill-after=10s 1200 bash /workspace/tests/integration/run-tests.sh --enroot "${integration_tests[@]}" \
             2>&1 | tee "$RUNNER_TEMP/stat-ci/integration-enroot.log"
 
       - name: Summarize validation results
@@ -233,6 +249,7 @@ jobs:
           | Test | Result |
           | --- | --- |
           | Installation | ${{ steps.installation.outcome }} |
+          | Python units | ${{ steps.units.outcome }} |
           | Serial | ${{ steps.serial.outcome }} |
           | MPI | ${{ steps.mpi.outcome }} |
           | MPI Enroot | ${{ steps.enroot.outcome }} |

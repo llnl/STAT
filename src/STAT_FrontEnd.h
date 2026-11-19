@@ -63,8 +63,18 @@ typedef enum {
     STAT_ATTACH,
     STAT_SERIAL_ATTACH,
     STAT_GDB_ATTACH,
-    STAT_SERIAL_GDB_ATTACH
+    STAT_SERIAL_GDB_ATTACH,
+    STAT_PYSTACK_ATTACH,
+    STAT_SERIAL_PYSTACK_ATTACH
 } StatLaunch_t;
+
+//! Select the daemon stack collector (native means Dyninst), independently of launch or attach mode.
+//! For example, -K -C must retain STAT_LAUNCH while starting daemons with PyStack.
+typedef enum {
+    STAT_DAEMON_BACKEND_NATIVE = 0,
+    STAT_DAEMON_BACKEND_GDB,
+    STAT_DAEMON_BACKEND_PYSTACK
+} StatDaemonBackend_t;
 
 //! An enum for MRNet topology specification type
 typedef enum {
@@ -286,9 +296,13 @@ class STAT_FrontEnd
                    acks received
             \param variableSpecification - [optional] a list of variables to
                    gather along with the traces
+            \param pystackNativeMode - [optional] per-sample PyStack native-frame mode:
+                   "Python Only" or "Python + Native". STAT_SAMPLE_THREADS selects
+                   all threads; with native frames enabled it also includes native-only workers.
+                   Defaults to "Python Only". Ignored by other backends.
             \return STAT_OK on success
         */
-        StatError_t sampleStackTraces(unsigned int sampleType, unsigned int nTraces, unsigned int traceFrequency, unsigned int nRetries, unsigned int retryFrequency, unsigned int maxDaemonNumThreads = 1024, bool blocking = true, const char *variableSpecification = "NULL");
+        StatError_t sampleStackTraces(unsigned int sampleType, unsigned int nTraces, unsigned int traceFrequency, unsigned int nRetries, unsigned int retryFrequency, unsigned int maxDaemonNumThreads = 1024, bool blocking = true, const char *variableSpecification = "NULL", const char *pystackNativeMode = "Python Only");
 
         //! Collect the most recent stack trace from all daemons
         /*!
@@ -614,6 +628,19 @@ class STAT_FrontEnd
             \return the application option
         */
         StatLaunch_t getApplicationOption();
+
+        //! Sets the daemon stack backend independent of launch or attach mode
+        //! This lets --pystack -C select PyStack while preserving STAT_LAUNCH for LaunchMON.
+        /*!
+            \param daemonBackend - daemon stack backend
+        */
+        void setDaemonBackend(StatDaemonBackend_t daemonBackend);
+
+        //! Gets the daemon stack backend
+        /*!
+            \return the daemon stack backend
+        */
+        StatDaemonBackend_t getDaemonBackend();
 
         //! Returns the last error message
         /*!
@@ -980,6 +1007,7 @@ class STAT_FrontEnd
         StatError_t (STAT_FrontEnd::*pendingAckCb_)();      /*!< the function to call after acknowledgement received from daemons */
         StatVerbose_t verbose_;                             /*!< the verbosity level */
         StatLaunch_t applicationOption_;                    /*!< the mode in which STAT was given control of the application */
+        StatDaemonBackend_t daemonBackend_;                 /*!< the stack backend to initialize in STATD */
         MRN::Network *network_;                             /*!< the MRNet Network object */
         MRN::Communicator *broadcastCommunicator_;          /*!< the broadcast communicator*/
         MRN::Stream *broadcastStream_;                      /*!< the broadcast stream for sending commands and receiving ack */

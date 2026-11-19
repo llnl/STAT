@@ -20,8 +20,12 @@ python3 -c 'import _STATmerge'
 python3 -m unittest discover -s tests/unit -t .
 ```
 
+GTK tests need a display; on a headless host, run the discovery command under `xvfb-run -a`, as CI does.
+These unit checks do not establish live GUI or cluster acceptance.
+Unit tests run from a repository checkout; they are not included in source archives or installed by `make install`.
 
 ## Integration tests
 
-The [integration suite](integration/README.md) checks MPI rank membership, recursion
-and OpenMP thread stacks using an installed STAT, in Docker and nested Enroot.
+The [integration suite](integration/README.md) checks rank membership, call paths and process/thread counts
+for native and Python workloads using an installed STAT. It supports local MPI and Slurm profiles,
+including Docker, nested Enroot and Slurm/Pyxis execution.

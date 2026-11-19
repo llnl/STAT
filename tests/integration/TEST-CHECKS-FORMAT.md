@@ -68,7 +68,7 @@ With those launch settings, this block means:
 | `each_sample` | Every listed check runs on every individual sample. |
 | `across_samples` | Every listed check runs on the merged result of the collected samples. |
 
-For `source: ranks`, an `across_samples` check requires every expected rank to match one of its listed paths in at least one
+For `source: ranks` with exact `count`, an `across_samples` check requires every expected rank to match one of its listed paths in at least one
 sample. The ranks can match different paths in different samples.
 
 For one rank with accepted paths A or B:
@@ -98,6 +98,8 @@ only coverage, repeating an identical check in both sections adds nothing once e
 
 | Field | Interpretation |
 | --- | --- |
+| `count` | Require an exact count and all expected rank IDs. |
+| `min_count` | Require at least this count; any subset of the expected rank IDs may match. |
 | `attribute: "pcount"` | Compare process counts on the matched paths’ terminal edges. |
 | `attribute: "tcount"` | Compare thread counts on those edges. |
 | `source: "ranks"` | Use distinct rank IDs as pcount instead of raw edge counts. Only valid with `pcount`. |
@@ -107,7 +109,11 @@ only coverage, repeating an identical check in both sections adds nothing once e
 | `merged: true` | All equivalent matches form one selected edge. |
 
 Without `source: ranks`, counts come from graph edges. Without `ranks` or `exclude_ranks`, every application rank is
-expected. Both the total and the rank membership must match.
+expected with exact `count`. Both the total and the rank membership must match.
+
+Use exactly one of `count` or `min_count`. Both accept the count values below. For example, `source: ranks` with
+`min_count: 1` requires a connected matching stack from at least one rank, without requiring every rank to match.
+Zero matches still fail, and ranks outside the configured set are never accepted.
 
 For example, four parents with two loader children each have eight children but only four distinct rank IDs. The child check
 therefore uses edge `pcount=8`; `source: ranks` would count four.

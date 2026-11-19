@@ -22,7 +22,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #define STATBE_MAX_HN_LEN 256
 #define STAT_SW_DEBUG_BUFFER_LENGTH 33554432
 
-#ifdef STAT_GDB_BE
+#if defined(STAT_GDB_BE) || defined(STAT_ENABLE_PYSTACK_BACKEND)
 #include <Python.h>
 #endif
 
@@ -206,6 +206,7 @@ class STAT_BackEnd
         */
         virtual StatError_t initGdb() = 0;
 #endif
+        virtual StatError_t initPyStack() = 0;
 
         //! Initialize and set up the job launcher
         /*
@@ -369,6 +370,42 @@ class STAT_BackEnd
         */
         StatError_t resume();
 
+#ifdef STAT_ENABLE_PYSTACK_BACKEND
+        //! Pause roots and optionally descendants; undo new stops if pausing fails.
+        StatError_t pausePyStack(bool withChildren = false);
+
+        //! Resume tracked descendants before their PyStack root processes.
+        StatError_t resumePyStack();
+
+        //! Release PyStack targets, honoring root ranks requested to remain stopped.
+        StatError_t detachPyStack(unsigned int *stopArray, int stopArrayLen);
+
+        //! Pause Python stack roots and descendants for non-profile sampling
+        /*!
+            \return STAT_OK on success
+        */
+        StatError_t pausePythonStackProcessTrees();
+
+        //! Stop descendant processes for a frozen sampling window
+        /*!
+            Descendants are stopped even when child stacks are not included in
+            the graph so all backend snapshots observe a frozen process tree.
+        */
+        StatError_t stopDescendantProcessesForSampling();
+
+        //! Continue a target, treating an exited process as already released.
+        bool continuePyStackProcess(int pid, const char *context);
+
+        //! Resume descendants stopped for a frozen sampling window
+        /*!
+            \param context - diagnostic context for warning messages
+            \param leaveStoppedRanks - release ownership without continuing these ranks
+            \return STAT_RESUME_ERROR if any descendant could not be continued
+        */
+        StatError_t resumeStoppedDescendantProcesses(const char *context,
+            const std::set<unsigned int> &leaveStoppedRanks = std::set<unsigned int>());
+#endif
+
         //! Pause a single process
         /*!
             \param walker - the process to pause
@@ -393,9 +430,24 @@ class STAT_BackEnd
                    before sampling
             \param variableSpecification - the specification of variables to
                    extract
+            \param pystackNativeMode - per-sample PyStack native-frame selection
             \return STAT_OK on success
         */
-        StatError_t sampleStackTraces(unsigned int nTraces, unsigned int traceFrequency, unsigned int nRetries, unsigned int retryFrequency, char *variableSpecification);
+        StatError_t sampleStackTraces(unsigned int nTraces, unsigned int traceFrequency, unsigned int nRetries, unsigned int retryFrequency, char *variableSpecification, const char *pystackNativeMode);
+#ifdef STAT_ENABLE_PYSTACK_BACKEND
+        StatError_t samplePyStackTraces(unsigned int nTraces, unsigned int traceFrequency,
+                                      bool wasRunning, const char *pystackNativeMode);
+
+        //! Return a new Python batch reference, or NULL to use serial collection.
+        PyObject *collectPyStackBatch(const char *nativeMode);
+
+        //! Return a new trace reference, or NULL after reporting a target's collection failure.
+        PyObject *collectPyStackTarget(unsigned int targetIndex, PyObject *batchResults,
+            PyObject *sampleFunc, const char *nativeMode, bool &nonPythonTarget);
+
+        //! Decode one target's trace into the current graph, updating the sample's thread index.
+        StatError_t addPyStackTrace(unsigned int targetIndex, const char *trace, int &threadIndex);
+#endif
 
 #if defined GROUP_OPS
         //! Get a stack trace from every process
@@ -541,11 +593,13 @@ class STAT_BackEnd
             \param dst - the destination node
             \param edge - the edge bit vector
             \param tid - the thread ID
+            \param processId - the sampled PID, or -1 when unavailable
             \return STAT_OK on success
 
             If the edge does not exist, create it, otherwise just merge
         */
-        StatError_t update2dEdge(int src, int dst, StatBitVectorEdge_t *edge, Dyninst::THR_ID tid);
+        StatError_t update2dEdge(int src, int dst, StatBitVectorEdge_t *edge,
+                                Dyninst::THR_ID tid, pid_t processId = -1);
 
         //! generate the 2d and 3d prefix trees based on nodes and edges maps
         /*!
@@ -616,6 +670,8 @@ class STAT_BackEnd
         std::map<int, std::map<std::string, std::string> > nodeIdToAttrs_;
         std::map<int, std::map<std::string, void *> > edgeIdToAttrs_;
         std::map<int, std::map<std::string, void *> > edgeIdToAttrs3d_;
+        std::map<int, std::set<pid_t> > edgeProcessIds_;
+        std::map<int, std::set<pid_t> > edgeProcessIds3d_;
         unsigned int threadBvLength_;
         std::vector<Dyninst::THR_ID> threadIds_;
         std::map<int, std::string> nodes2d_; /*!< the 2D prefix tree nodes */
@@ -626,6 +682,7 @@ class STAT_BackEnd
         StatDaemonLaunch_t launchType_; /*!< the launch type */
         unsigned int sampleType_;       /*!< type of sample we're currently
                                              collecting */
+        int processRankCount_;          /*!< global Python worker count, or zero before worker ranks are discovered */
         int nVariables_;                /*!< the number of variables to
                                              extract */
         StatVariable_t *extractVariables_;  /*!< a list of variables to extract
@@ -657,7 +714,12 @@ class STAT_BackEnd
 #ifdef STAT_GDB_BE
         PyObject *gdbModule_;   /*!< the Python stat_cuda_gdb module */
 #endif
+#ifdef STAT_ENABLE_PYSTACK_BACKEND
+        PyObject *pyStackModule_;   /*!< the Python stat_py_stack module */
+#endif
         bool usingGdb_;     /*!< whether we are using GDB instead of Dyninst */
+        bool usingPyStack_;     /*!< whether we are using PyStack */
+        std::map<int, unsigned int> stoppedDescendants_; /*!< PIDs stopped by STAT and their owning application ranks */
 
 };
 

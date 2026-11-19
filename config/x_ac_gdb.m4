@@ -9,7 +9,7 @@ AC_DEFUN([X_AC_GDB], [
 
   AC_ARG_WITH(gdb,
     [AS_HELP_STRING([--with-gdb=path],
-      [Use cmd as the default remote shell]
+      [Use path for gdb backend]
     )],
     [withgdb="$withval"
       AM_CONDITIONAL([ENABLE_GDB], true)

@@ -570,6 +570,36 @@ StatError_t STAT_lmonBackEnd::initGdb()
 }
 #endif
 
+
+StatError_t STAT_lmonBackEnd::initPyStack()
+{
+#ifndef STAT_ENABLE_PYSTACK_BACKEND
+    fprintf(errOutFp_, "PyStack backend was not built\n");
+    return STAT_SYSTEM_ERROR;
+#else
+    PyObject *pName;
+    const char *moduleName = "stat_py_stack";
+    Py_Initialize();
+    pName = PyUnicode_FromString(moduleName);
+    if (pName == NULL)
+    {
+        fprintf(errOutFp_, "Cannot convert argument\n");
+        return STAT_SYSTEM_ERROR;
+    }
+
+    pyStackModule_ = PyImport_Import(pName);
+    Py_DECREF(pName);
+    if (pyStackModule_ == NULL)
+    {
+        fprintf(errOutFp_, "Failed to import Python module %s\n", moduleName);
+        PyErr_Print();
+        return STAT_SYSTEM_ERROR;
+    }
+    usingPyStack_ = true;
+
+    return STAT_OK;
+#endif
+}
 #ifndef USE_CTI
 STAT_BackEnd* STAT_BackEnd::make(StatDaemonLaunch_t launchType)
 {

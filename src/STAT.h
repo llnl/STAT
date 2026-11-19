@@ -54,6 +54,9 @@ enum StatSampleOptions_t {
 #ifdef STAT_GDB_BE
     STAT_SAMPLE_CUDA_QUICK = 0x100,
 #endif
+    STAT_SAMPLE_PYSTACK = 0x400,       // Collect stacks with PyStack.
+    STAT_SAMPLE_CHILDREN = 0x800,      // Include child processes in the sample.
+    STAT_SAMPLE_PROCESS_RANKS = 0x2000, // Graph edges use discovered application rank IDs.
     STAT_SAMPLE_UNKNOWN=0xff
 } ;
 

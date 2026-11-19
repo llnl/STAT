@@ -84,4 +84,4 @@ else
     export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
 fi
 
-exec @STATPYTHON@ @pythondir@/STATmain.py $@
+exec @STATPYTHON@ @pythondir@/STATmain.py "$@"

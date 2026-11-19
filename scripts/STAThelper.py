@@ -253,6 +253,7 @@ def is_mpi(function_name):
 #  \n
 def get_task_list(label):
     """Get an integer list of tasks from an edge label."""
+    label = _strip_process_count_suffix(label)
     if label == '':
         return []
     if label[0] != '[':
@@ -275,6 +276,21 @@ def get_task_list(label):
         else:
             task_list.append(int(element))
     return task_list
+
+
+def _strip_process_count_suffix(label):
+    """Strip process multiplicity before parsing rank IDs or counting ranks.
+
+    For example, '[0,2]x8' represents two ranks and total of eight processes including
+    the main application process and child processes started by the main application process;
+    rank parsing needs '[0,2]'. Display formatting preserves the suffix.
+    """
+    if not label:
+        return label
+    marker = label.rfind(']x')
+    if marker != -1 and label[marker + 2:].isdigit():
+        return label[:marker + 1]
+    return label
 
 
 ## \param executable - the executable to search for
@@ -419,11 +435,13 @@ def node_attr_to_label(attrs, full_path = True):
     lex_string = attrs.get("lex_string")
     if lex_string is not None:
         label += "@" + attrs["lex_string"]
-    elif "source" in attrs and attrs["source"] != "(null)":
+    elif (attrs.get("source") not in (None, "", "(null)") and
+          attrs.get("line") not in (None, "", "(null)")):
         if full_path is True:
-            label += "@" + attrs["source"] + ":" + attrs["line"]
+            label += "@" + attrs["source"]
         else:
-            label += "@" + os.path.basename(attrs["source"]) + ":" + attrs["line"]
+            label += "@" + os.path.basename(attrs["source"])
+        label += ":" + attrs["line"]
     elif "module" in attrs and attrs["module"] != "(null)":
         if full_path is True:
             label = attrs["module"] + attrs["offset"]
@@ -453,6 +471,12 @@ def edge_attr_to_label(attrs):
         label = attrs["bv"]
     elif attrs["count"] != "(null)":
         label = "%s:[%s]" % (attrs["count"], attrs["rep"])
+
+    # Append xN for extra child processes: N is the total process count.
+    if label and attrs.get("pcount", "(null)") != "(null)":
+        process_count = int(attrs["pcount"])
+        if process_count > get_num_tasks(label):
+            label += "x%d" % process_count
     return label
 
 
@@ -461,6 +485,7 @@ def edge_attr_to_label(attrs):
 #
 #  \n
 def get_num_tasks(label):
+    label = _strip_process_count_suffix(label)
     if label == '' or label == None:
         return 0
     ret = 0
@@ -484,6 +509,12 @@ def get_truncated_edge_label(attrs):
     label = attrs["label"]
     if label == '':
         return ''
+
+    # Save the optional xN process count so only the rank list is truncated.
+    rank_label = _strip_process_count_suffix(label)
+    process_suffix = label[len(rank_label):]
+    label = rank_label
+
     max_size = 12
     num_tasks = get_num_tasks(label)
     num_threads = -1
@@ -516,7 +547,8 @@ def get_truncated_edge_label(attrs):
         ret = '%d(%d):%s' % (num_tasks, num_threads, label)
     else:
         ret = '%d:%s' % (num_tasks, label)
-    return ret
+    # Restore xN after the formatted rank/thread counts and shortened rank list.
+    return ret + process_suffix
 
 ## \param var_spec - the variable specificaiton (location and name)
 #  \return a string representation of the variable specificaiton

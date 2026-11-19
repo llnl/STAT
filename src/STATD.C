@@ -45,6 +45,7 @@ int main(int argc, char **argv)
         {"serial",              no_argument,        0, 's'},
         {"mrnet",               no_argument,        0, 'M'},
         {"gdb",                 required_argument,  0, 'G'},
+        {"pystack",             required_argument,  0, 'K'},
         {"pythonpath",          required_argument,  0, 'P'},
         {"mrnetoutputlevel",    required_argument,  0, 'o'},
         {"pid",                 required_argument,  0, 'p'},
@@ -95,7 +96,7 @@ int main(int argc, char **argv)
 
     while (1)
     {
-        opt = getopt_long(argc, argv,"hVmsMG:P:o:p:L:l:d:", longOptions, &optionIndex);
+        opt = getopt_long(argc, argv,"hVmsMG:P:o:p:L:l:d:K:", longOptions, &optionIndex);
         if (opt == -1)
             break;
         if (opt == 'M')
@@ -159,6 +160,19 @@ int main(int argc, char **argv)
                 return statError;
             }
 #endif
+            break;
+        case 'K':
+            i = setenv("STAT_PYSTACK", optarg, 1);
+            if (i != 0)
+                statBackEnd->printMsg(STAT_WARNING, __FILE__, __LINE__, "%s: setenv(%s) returned %d\n", strerror(errno), optarg, i);
+            statError = statBackEnd->initPyStack();
+            if (statError != STAT_OK)
+            {
+                statBackEnd->printMsg(statError, __FILE__, __LINE__, "Failed to initialize PyStack BE\n", optarg);
+                statBackEnd->finalize();
+                delete statBackEnd;
+                return statError;
+            }
             break;
         case 's':
             break;

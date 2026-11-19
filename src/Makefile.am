@@ -11,6 +11,10 @@ AM_CXXFLAGS += -DSTAT_GDB_BE
 SWIGFLAGS += -DSTAT_GDB_BE
 endif
 AM_LDFLAGS = $(CODE_COVERAGE_LIBS)
+if ENABLE_PYSTACK
+AM_CXXFLAGS += -DSTAT_ENABLE_PYSTACK_BACKEND
+SWIGFLAGS += -DSTAT_ENABLE_PYSTACK_BACKEND
+endif
 
 include_HEADERS = STAT.h STAT_FrontEnd.h STAT_lmonFrontEnd.h STAT_BackEnd.h STAT_timer.h STAT_GraphRoutines.h STAT_IncMRNet.h MRNetSymbolReader.h STAT_CircularLogs.h
 
@@ -46,11 +50,16 @@ STATbin_LDADD = libstatfe.la @FELIBS@
 STATD_LDADD = libstatbe.la @BELIBS@
 
 
-stat_be_la_sources_base = STAT_BackEnd.C STAT_BackEnd.h STAT_lmonBackEnd.C STAT_lmonBackEnd.h STAT.h STAT_timer.h STAT_timer.C STAT_CircularLogs.C
+stat_be_la_sources_base = STAT_ProcessTree.C STAT_ProcessTree.h STAT_BackEnd.C STAT_BackEnd.h STAT_lmonBackEnd.C STAT_lmonBackEnd.h STAT.h STAT_timer.h STAT_timer.C STAT_CircularLogs.C
 stat_fe_la_sources_base = STAT_FrontEnd.C STAT_lmonFrontEnd.C STAT_FrontEnd.h  STAT_lmonFrontEnd.h STAT.h STAT_timer.h STAT_timer.C
 
 
 libstatbe_la_SOURCES = $(stat_be_la_sources_base) $(stat_graphlib_sources) $(stat_be_la_sources_fgfs)
+
+if ENABLE_PYSTACK
+libstatbe_la_SOURCES += STAT_PyStack.C
+endif
+
 libstatfe_la_SOURCES = $(stat_fe_la_sources_base) $(stat_graphlib_sources) 
 
 pkglib_LTLIBRARIES = STAT_FilterDefinitions.la

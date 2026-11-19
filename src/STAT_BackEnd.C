@@ -18,6 +18,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "STAT_BackEnd.h"
 
+#include <unistd.h>
+
 using namespace std;
 using namespace MRN;
 using namespace Dyninst;
@@ -42,7 +44,6 @@ extern const char *gNodeAttrs[];
 extern const char *gEdgeAttrs[];
 extern int gNumNodeAttrs;
 extern int gNumEdgeAttrs;
-
 
 STAT_BackEnd::STAT_BackEnd(StatDaemonLaunch_t launchType) :
     swLogBuffer_(STAT_SW_DEBUG_BUFFER_LENGTH),
@@ -74,6 +75,7 @@ STAT_BackEnd::STAT_BackEnd(StatDaemonLaunch_t launchType) :
     broadcastStream_ = NULL;
     proctab_ = NULL;
     sampleType_ = 0;
+    processRankCount_ = 0;
     nVariables_ = 0;
     extractVariables_ = NULL;
     snprintf(outDir_, BUFSIZE, "NULL");
@@ -86,6 +88,7 @@ STAT_BackEnd::STAT_BackEnd(StatDaemonLaunch_t launchType) :
 #endif
     gBePtr = this;
     registerSignalHandlers(true);
+    usingPyStack_ = false;
 }
 
 STAT_BackEnd::~STAT_BackEnd()
@@ -156,6 +159,7 @@ STAT_BackEnd::~STAT_BackEnd()
     registerSignalHandlers(false);
     gBePtr = NULL;
     usingGdb_ = false;
+    usingPyStack_ = false;
 }
 
 void STAT_BackEnd::clear2dNodesAndEdges()
@@ -173,6 +177,7 @@ void STAT_BackEnd::clear2dNodesAndEdges()
         for (edgeAttrsIter = edgeIdToAttrsIter->second.begin(); edgeAttrsIter != edgeIdToAttrsIter->second.end(); edgeAttrsIter++)
             statFreeEdgeAttr(edgeAttrsIter->first.c_str(), edgeAttrsIter->second);
     edgeIdToAttrs_.clear();
+    edgeProcessIds_.clear();
 }
 
 void STAT_BackEnd::clear3dNodesAndEdges()
@@ -192,6 +197,7 @@ void STAT_BackEnd::clear3dNodesAndEdges()
         for (edgeAttrsIter = edgeIdToAttrsIter->second.begin(); edgeAttrsIter != edgeIdToAttrsIter->second.end(); edgeAttrsIter++)
             statFreeEdgeAttr(edgeAttrsIter->first.c_str(), edgeAttrsIter->second);
     edgeIdToAttrs3d_.clear();
+    edgeProcessIds3d_.clear();
 }
 
 
@@ -208,7 +214,7 @@ StatError_t STAT_BackEnd::update3dNodesAndEdges()
     {
         if (edges3d_.find(edgesIter->first) == edges3d_.end())
         {
-            edge = initializeBitVectorEdge(proctabSize_);
+            edge = initializeBitVectorEdge((sampleType_ & STAT_SAMPLE_PROCESS_RANKS) ? processRankCount_ : proctabSize_);
             if (edge == NULL)
             {
                 printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to initialize edge\n");
@@ -230,9 +236,24 @@ StatError_t STAT_BackEnd::update3dNodesAndEdges()
         }
         for (i = 0; i < gNumEdgeAttrs; i++)
             edgeIdToAttrs3d_[dst][gEdgeAttrs[i]] = statMergeEdgeAttr(gEdgeAttrs[i], edgeIdToAttrs3d_[dst][gEdgeAttrs[i]], edgeIdToAttrs_[dst][gEdgeAttrs[i]]);
+
+        /* pcount counts sampled main processes and children separately from rank membership.
+         * The merge above adds sample counts; replace that sum with this daemon's distinct-PID
+         * count per edge across retained samples, so repeated observations count only once. */
+        edgeProcessIds3d_[dst].insert(edgeProcessIds_[dst].begin(), edgeProcessIds_[dst].end());
+        if (!edgeProcessIds3d_[dst].empty())
+        {
+            int64_t processCount = edgeProcessIds3d_[dst].size();
+            statFreeEdgeAttr("pcount", edgeIdToAttrs3d_[dst]["pcount"]);
+            edgeIdToAttrs3d_[dst]["pcount"] = statCopyEdgeAttr("pcount", &processCount);
+        }
         if (sampleType_ & STAT_SAMPLE_COUNT_REP)
         {
-            countRepEdge = getBitVectorCountRep((StatBitVectorEdge_t *)edgeIdToAttrs3d_[dst]["bv"], statRelativeRankToAbsoluteRank);
+            /* The callback maps bit positions to global ranks for the representative and checksum.
+             * PyStack worker bits already use global ranks, so return them unchanged.
+             * Ordinary bits index this daemon's process table and require its rank lookup. */
+            countRepEdge = getBitVectorCountRep((StatBitVectorEdge_t *)edgeIdToAttrs3d_[dst]["bv"],
+                                                (sampleType_ & STAT_SAMPLE_PROCESS_RANKS) ? statDummyRelativeRankToAbsoluteRank : statRelativeRankToAbsoluteRank);
             if (countRepEdge == NULL)
             {
                 printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to translate bit vector into count + representative\n");
@@ -269,13 +290,13 @@ StatError_t STAT_BackEnd::update3dNodesAndEdges()
 }
 
 
-StatError_t STAT_BackEnd::update2dEdge(int src, int dst, StatBitVectorEdge_t *edge, Dyninst::THR_ID tid)
+StatError_t STAT_BackEnd::update2dEdge(int src, int dst, StatBitVectorEdge_t *edge, Dyninst::THR_ID tid, pid_t processId)
 {
     StatBitVectorEdge_t *newEdge = NULL;
 
     if (edges2d_.find(dst) == edges2d_.end())
     {
-        newEdge = initializeBitVectorEdge(proctabSize_);
+        newEdge = initializeBitVectorEdge((sampleType_ & STAT_SAMPLE_PROCESS_RANKS) ? processRankCount_ : proctabSize_);
         if (newEdge == NULL)
         {
             printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to initialize newEdge\n");
@@ -298,6 +319,14 @@ StatError_t STAT_BackEnd::update2dEdge(int src, int dst, StatBitVectorEdge_t *ed
     // we always maintain a bit vector and just won't send it if sampling count + rep
     statFreeEdgeAttr("bv", edgeIdToAttrs_[dst]["bv"]);
     edgeIdToAttrs_[dst]["bv"] = statCopyEdgeAttr("bv", (void *)edges2d_[dst].second);
+    /* Count each process once per edge in this sample, even if several of its threads share the path.
+     * A successful set insertion means this PID is new; -1 means no process identity was supplied. */
+    if (processId >= 0 && edgeProcessIds_[dst].insert(processId).second)
+    {
+        int64_t processCount = edgeProcessIds_[dst].size();
+        statFreeEdgeAttr("pcount", edgeIdToAttrs_[dst]["pcount"]);
+        edgeIdToAttrs_[dst]["pcount"] = statCopyEdgeAttr("pcount", &processCount);
+    }
     if (sampleType_ & STAT_SAMPLE_THREADS)
     {
         newEdge = initializeBitVectorEdge(threadBvLength_);
@@ -329,7 +358,8 @@ StatError_t STAT_BackEnd::update2dEdge(int src, int dst, StatBitVectorEdge_t *ed
 
     if (sampleType_ & STAT_SAMPLE_COUNT_REP)
     {
-        countRepEdge = getBitVectorCountRep(edges2d_[dst].second, statRelativeRankToAbsoluteRank);
+        countRepEdge = getBitVectorCountRep(edges2d_[dst].second,
+                                            (sampleType_ & STAT_SAMPLE_PROCESS_RANKS) ? statDummyRelativeRankToAbsoluteRank : statRelativeRankToAbsoluteRank);
         if (countRepEdge == NULL)
         {
             printMsg(STAT_ALLOCATE_ERROR, __FILE__, __LINE__, "Failed to translate bit vector into count + representative\n");
@@ -785,7 +815,7 @@ StatError_t STAT_BackEnd::mainLoop()
     do
     {
 #if defined(GROUP_OPS)
-        if (doGroupOps_ && usingGdb_ == false)
+        if (doGroupOps_ && usingGdb_ == false && usingPyStack_ == false)
         {
   #ifdef DYSECTAPI
             /* Let BPatch handle its events */
@@ -795,7 +825,7 @@ StatError_t STAT_BackEnd::mainLoop()
 #endif
 
         /* Set the stackwalker notification file descriptor */
-        if (processMap_.size() > 0 && processMapNonNull_ > 0 && usingGdb_ == false)
+        if (processMap_.size() > 0 && processMapNonNull_ > 0 && usingGdb_ == false && usingPyStack_ == false)
             swNotificationFd = ProcDebug::getNotificationFD();
         else
             swNotificationFd = -1;
@@ -924,8 +954,13 @@ StatError_t STAT_BackEnd::mainLoop()
                 break;
 
             case PROT_SAMPLE_TRACES:
-                if (packet->unpack("%ud %ud %ud %ud %ud %ud %s", &nTraces, &traceFrequency, &nRetries, &retryFrequency, &sampleType_, &threadBvLength_, &variableSpecification) == -1)
+            {
+                char *pystackNativeMode = NULL;
+                if (packet->unpack("%ud %ud %ud %ud %ud %ud %s %s", &nTraces, &traceFrequency, &nRetries, &retryFrequency, &sampleType_, &threadBvLength_, &variableSpecification, &pystackNativeMode) == -1)
                 {
+                    free(variableSpecification);
+                    variableSpecification = NULL;
+                    free(pystackNativeMode);
                     printMsg(STAT_MRNET_ERROR, __FILE__, __LINE__, "unpack(PROT_SAMPLE_TRACES) failed\n");
                     if (sendAck(stream, PROT_SAMPLE_TRACES_RESP, intRet) != STAT_OK)
                     {
@@ -940,7 +975,7 @@ StatError_t STAT_BackEnd::mainLoop()
                     sampleType_ |= STAT_SAMPLE_CLEAR_ON_SAMPLE;
                 previousSampleType = sampleType_;
 
-                statError = sampleStackTraces(nTraces, traceFrequency, nRetries, retryFrequency, variableSpecification);
+                statError = sampleStackTraces(nTraces, traceFrequency, nRetries, retryFrequency, variableSpecification, pystackNativeMode);
                 if (statError == STAT_OK)
                     intRet = 0;
                 statError = generateGraphs(&prefixTree2d, &prefixTree3d);
@@ -949,7 +984,9 @@ StatError_t STAT_BackEnd::mainLoop()
                 ackTag = PROT_SAMPLE_TRACES_RESP;
                 free(variableSpecification);
                 variableSpecification = NULL;
+                free(pystackNativeMode);
                 break;
+            }
 
             case PROT_SEND_LAST_TRACE:
                 /* Free previously allocated byte array */
@@ -1255,7 +1292,7 @@ StatError_t STAT_BackEnd::mainLoop()
         if (ackTag == PROT_SEND_NODE_IN_EDGE_RESP || ackTag == PROT_SEND_LAST_TRACE_RESP || ackTag == PROT_SEND_TRACES_RESP)
         {
             printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Sending serialized contents to FE with tag %d, length %d\n", ackTag, byteArrayLen);
-            bitVectorLength = statBitVectorLength(proctabSize_);
+            bitVectorLength = statBitVectorLength((sampleType_ & STAT_SAMPLE_PROCESS_RANKS) ? processRankCount_ : proctabSize_);
             if (stream->send(ackTag, "%Ac %d %d %ud", byteArray, byteArrayLen, bitVectorLength, myRank_, sampleType_) == -1)
             {
                 printMsg(STAT_MRNET_ERROR, __FILE__, __LINE__, "stream::send(%d) failure\n", ackTag);
@@ -1314,6 +1351,10 @@ StatError_t STAT_BackEnd::attach()
 #endif
 
     printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Attaching to all application processes\n");
+
+    // PyStack collectors attach per sample; stop roots here because STAT expects attachment to leave them paused.
+    if (usingPyStack_ == true)
+        return pause();
 
 #ifdef STAT_GDB_BE
     if (usingGdb_ == true)
@@ -1541,12 +1582,16 @@ StatError_t STAT_BackEnd::attach()
     return STAT_OK;
 }
 
-
 StatError_t STAT_BackEnd::pause()
 {
     map<unsigned int, Walker *>::iterator processMapIter;
 
     printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Pausing all application processes\n");
+
+#ifdef STAT_ENABLE_PYSTACK_BACKEND
+    if (usingPyStack_ == true)
+        return pausePyStack();
+#endif
 
 #ifdef STAT_GDB_BE
     if (usingGdb_ == true)
@@ -1632,6 +1677,11 @@ StatError_t STAT_BackEnd::resume()
     map<unsigned int, Walker *>::iterator processMapIter;
 
     printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Resuming all application processes\n");
+
+#ifdef STAT_ENABLE_PYSTACK_BACKEND
+    if (usingPyStack_ == true)
+        return resumePyStack();
+#endif
 
 #ifdef STAT_GDB_BE
     if (usingGdb_ == true)
@@ -1765,6 +1815,7 @@ StatError_t STAT_BackEnd::resumeProcess(Walker *walker)
     }
     return STAT_OK;
 }
+
 
 
 StatError_t STAT_BackEnd::parseVariableSpecification(char *variableSpecification)
@@ -1958,7 +2009,8 @@ StatError_t STAT_BackEnd::getVariable(const Frame &frame, char *variableName, ch
 }
 
 
-StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int traceFrequency, unsigned int nRetries, unsigned int retryFrequency, char *variableSpecification)
+
+StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int traceFrequency, unsigned int nRetries, unsigned int retryFrequency, char *variableSpecification, const char *pystackNativeMode)
 {
     int j;
     unsigned int i;
@@ -1972,7 +2024,7 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
         threadBvLength_ = STAT_BITVECTOR_BITS * 2048; // for CUDA we increase to at least 131072 threads per STAT daemon (i.e., node)
 #endif
 
-    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Preparing to sample %d traces each %d us with %d retries every %d us with max threads %d with variables %s and type %d\n", nTraces, traceFrequency, nRetries, retryFrequency, threadBvLength_, variableSpecification, sampleType_);
+    printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Preparing to sample %d traces each %d us with %d retries every %d us with max threads %d with variables %s, PyStack native mode %s, and type %d\n", nTraces, traceFrequency, nRetries, retryFrequency, threadBvLength_, variableSpecification, pystackNativeMode == NULL ? "Python Only" : pystackNativeMode, sampleType_);
 
     wasRunning = isRunning_;
     if (sampleType_ & STAT_SAMPLE_CLEAR_ON_SAMPLE)
@@ -1989,6 +2041,17 @@ StatError_t STAT_BackEnd::sampleStackTraces(unsigned int nTraces, unsigned int t
     }
 
     printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Gathering and merging %d traces from each task\n", nTraces);
+
+    if ((sampleType_ & STAT_SAMPLE_CHILDREN) && usingPyStack_ == false)
+    {
+        printMsg(STAT_WARNING, __FILE__, __LINE__, "--with-children is currently implemented for PyStack only; sampling parent processes only\n");
+        sampleType_ &= ~STAT_SAMPLE_CHILDREN;
+    }
+
+#ifdef STAT_ENABLE_PYSTACK_BACKEND
+    if (usingPyStack_ == true)
+        return samplePyStackTraces(nTraces, traceFrequency, wasRunning, pystackNativeMode);
+#endif
 
 #ifdef STAT_GDB_BE
     if (usingGdb_ == true)
@@ -3169,6 +3232,7 @@ StatError_t STAT_BackEnd::getStackTraceFromAll(unsigned int nRetries, unsigned i
 #endif /* if defined(GROUP_OPS) */
 
 
+
 StatBackEndProcInfo_t *STAT_BackEnd::getProctab()
 {
     return proctab_;
@@ -3200,6 +3264,11 @@ StatError_t STAT_BackEnd::detach(unsigned int *stopArray, int stopArrayLen)
     ProcDebug *pDebug = NULL;
 
     printMsg(STAT_LOG_MESSAGE, __FILE__, __LINE__, "Detaching from application processes, leaving %d processes stopped\n", stopArrayLen);
+
+#ifdef STAT_ENABLE_PYSTACK_BACKEND
+    if (usingPyStack_ == true)
+        return detachPyStack(stopArray, stopArrayLen);
+#endif
 
 #ifdef STAT_GDB_BE
     if (usingGdb_ == true)
@@ -4038,6 +4107,7 @@ StatError_t STAT_BackEnd::getPythonFrameInfo(Walker *proc, const Frame &frame, c
     return STAT_OK;
 }
 
+
 int STAT_BackEnd::getNDaemonsPerNode()
 {
     return nDaemonsPerNode_;
@@ -4284,4 +4354,3 @@ StatError_t STAT_BackEnd::statBenchCreateTrace(unsigned int maxDepth, unsigned i
 
     return STAT_OK;
 }
-

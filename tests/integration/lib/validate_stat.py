@@ -65,12 +65,18 @@ def read_check_block(path, name):
 def resolve_path_checks(rules, layout):
     """Validate path-check options and resolve count names from the launch settings."""
     for rule in rules:
-        missing = {'paths_any', 'attribute', 'count'} - rule.keys()
+        missing = {'paths_any', 'attribute'} - rule.keys()
         if missing:
             raise ValueError(f'Graph check is missing: {sorted(missing)}')
 
-        rule['count'] = resolve_count(rule['count'], layout)
-        if rule['count'] < 1:
+        # Require either an exact count or a minimum (e.g. native coverage from at least one rank).
+        counts = {'count', 'min_count'} & rule.keys()
+        if len(counts) != 1:
+            raise ValueError('Specify exactly one of count or min_count')
+        count_key, = counts
+        rule[count_key] = resolve_count(rule[count_key], layout)
+
+        if rule[count_key] < 1:
             raise ValueError('Expected counts must be positive')
 
         if 'ranks' in rule and not isinstance(rule['ranks'], list):
@@ -127,12 +133,12 @@ def output_errors(text, rules, minimum=False):
 def worker_counts(output, world_size):
     """Compare worker identities including multiplicity and parent ownership."""
 
-    # Startup records may be interleaved with ordinary application messages.
+    # Concurrent ranks can join intact records onto other output without a newline.
     records = {'DATALOADER_PARENT': [], 'DATALOADER_WORKER': []}
-    for line in output.splitlines():
-        kind, _, payload = line.partition(' ')
-        if kind in records:
-            records[kind].append(json.loads(payload))
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r'(DATALOADER_PARENT|DATALOADER_WORKER)\s+', output):
+        record, _ = decoder.raw_decode(output, match.end())
+        records[match.group(1)].append(record)
 
     # Each application rank must declare exactly one parent before workers can be checked.
     parents, workers = records['DATALOADER_PARENT'], records['DATALOADER_WORKER']
