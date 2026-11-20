@@ -56,6 +56,13 @@ if HAVE_DLOPEN is True:
     sys.setdlopenflags(new_dlflags)
 
 from STAT import STAT_FrontEnd, intArray, STAT_LOG_NONE, STAT_LOG_FE, STAT_LOG_BE, STAT_LOG_CP, STAT_LOG_MRN, STAT_LOG_SW, STAT_LOG_SWERR, STAT_OK, STAT_APPLICATION_EXITED, STAT_VERBOSE_ERROR, STAT_VERBOSE_FULL, STAT_VERBOSE_STDOUT, STAT_TOPOLOGY_AUTO, STAT_TOPOLOGY_DEPTH, STAT_TOPOLOGY_FANOUT, STAT_TOPOLOGY_USER, STAT_PENDING_ACK, STAT_LAUNCH, STAT_ATTACH, STAT_SERIAL_ATTACH, STAT_GDB_ATTACH, STAT_SERIAL_GDB_ATTACH, STAT_SAMPLE_FUNCTION_ONLY, STAT_SAMPLE_LINE, STAT_SAMPLE_PC, STAT_SAMPLE_COUNT_REP, STAT_SAMPLE_THREADS, STAT_SAMPLE_CLEAR_ON_SAMPLE, STAT_SAMPLE_PYTHON, STAT_SAMPLE_MODULE_OFFSET, STAT_CP_NONE, STAT_CP_SHAREAPPNODES, STAT_CP_EXCLUSIVE
+from STAT import (
+    STAT_PYSTACK_ATTACH, STAT_SERIAL_PYSTACK_ATTACH,
+    STAT_PYSTACK_BACKEND_ENABLED,
+    STAT_DAEMON_BACKEND_NATIVE, STAT_DAEMON_BACKEND_GDB, STAT_DAEMON_BACKEND_PYSTACK,
+    STAT_SAMPLE_PYSTACK, STAT_SAMPLE_CHILDREN,
+)
+
 HAVE_OPENMP_SUPPORT = True
 try:
     from STAT import STAT_SAMPLE_OPENMP
@@ -194,6 +201,7 @@ class STATGUI(STATDotWindow):
         self.attach_task_list = ['Launch Daemons', 'Connect to Daemons', 'Attach to Application']
         self.attach_task_list += self.sample_task_list
         types = {'Topology Type':     ['automatic', 'depth', 'max fanout', 'custom'],
+                 'PyStack Frames': ['Python', 'Python + C/C++'],
                  'Verbosity Type':    ['error', 'stdout', 'full'],
                  'Sample Type':       ['function only', 'function and pc', 'module offset', 'function and line'],
                  'Edge Type':         ['full list', 'count and representative'],
@@ -201,6 +209,9 @@ class STATGUI(STATDotWindow):
                  'Serial Remote Host Shell': ['rsh', 'ssh'],
                  'Resource Manager':  ['Auto', 'Alps', 'Slurm'],
                  'CP Policy':         ['none', 'share app nodes', 'exclusive']}
+        types['Sampling Backend'] = ['dyninst']
+        if STAT_PYSTACK_BACKEND_ENABLED:
+            types['Sampling Backend'].append('pystack')
         if not hasattr(self, "types"):
             self.types = {}
         for opt in types:
@@ -241,6 +252,8 @@ class STATGUI(STATDotWindow):
                    'Use MRNet Printf':                 False,
                    'GDB BE':                           False,
                    'GDB Path':                         gdb_path,
+                   'PyStack Path':                     os.environ.get('STAT_PYSTACK') or 'pystack',
+                   'Use PyStack':                      False,
                    'With CUDA Quick':                  False,
                    'Verbosity Type':                   'error',
                    'Communication Nodes':              '',
@@ -251,6 +264,8 @@ class STATGUI(STATDotWindow):
                    'Retry Frequency (us)':             10,
                    'Max Threads Per Daemon':           512,
                    'With Threads':                     False,
+                   'With Children':                    False,
+                   'PyStack Frames':                   'Python',
                    'With OpenMP':                      False,
                    'Gather Python Traces':             False,
                    'Clear On Sample':                  True,
@@ -304,6 +319,11 @@ class STATGUI(STATDotWindow):
                                     else:
                                         sys.stderr.write('invalid value %s for option %s as specified in file %s.  Expecting either "true" or "false".\n' % (value, option, path))
                                         continue
+                                elif option in ('PyStack Frames', 'Sample Type') and value not in self.types[option]:
+                                    fallback = 'Python' if option == 'PyStack Frames' else 'function and line'
+                                    sys.stderr.write("Warning: invalid %s value %r in %s. Expected %s. Using %s.\n" %
+                                                     (option, value, path, " or ".join(self.types[option]), fallback))
+                                    value = fallback
                                 self.options[option] = value
                             elif option == 'Source Search Path':
                                 if os.path.exists(value):
@@ -339,6 +359,8 @@ class STATGUI(STATDotWindow):
                 self.options['Gather Python Traces'] = True
             if args.withthreads is True:
                 self.options['With Threads'] = True
+            if args.with_children is True:
+                self.options['With Children'] = True
             if args.withopenmp is True:
                 self.options['With Threads'] = True
                 self.options['With OpenMP'] = True
@@ -351,6 +373,8 @@ class STATGUI(STATDotWindow):
                     self.options['GDB BE'] = True
                 if args.cudaquick is True:
                     self.options['With CUDA Quick'] = True
+            if args.pystack is True:
+                self.options['Use PyStack'] = True
             if args.log is not None:
                 if 'CP' in args.log:
                     self.options['Log CP'] = True
@@ -565,7 +589,7 @@ host[1-10,12,15-20];otherhost[30]
         frame.add(text_view)
         vbox.pack_start(frame, False, False, 0)
 
-        if self.STAT.getApplicationOption() != STAT_SERIAL_ATTACH and self.STAT.getApplicationOption() != STAT_SERIAL_GDB_ATTACH:
+        if self.STAT.getApplicationOption() != STAT_SERIAL_ATTACH and self.STAT.getApplicationOption() != STAT_SERIAL_GDB_ATTACH and self.STAT.getApplicationOption() != STAT_SERIAL_PYSTACK_ATTACH:
             frame = gtk.Frame(label='Job Launcher (host:PID)')
             text_view = gtk.TextView()
             text_buffer = gtk.TextBuffer()
@@ -993,10 +1017,7 @@ host[1-10,12,15-20];otherhost[30]
                 self.STAT = STAT_FrontEnd()
             for process in self.process_list.split():
                 self.STAT.addSerialProcess(process)
-            if self.options['GDB BE'] is True:
-                self.attach_cb(None, False, True, STAT_SERIAL_GDB_ATTACH)
-            else:
-                self.attach_cb(None, False, True, STAT_SERIAL_ATTACH)
+            self.attach_cb(None, False, True, STAT_SERIAL_ATTACH)
         else:
             self.attach_cb(None, False, False, STAT_ATTACH)
         return True
@@ -1232,8 +1253,13 @@ host[1-10,12,15-20];otherhost[30]
         self.pack_string_option(vbox2, 'Tool Daemon Path', attach_dialog)
         self.pack_string_option(vbox2, 'Filter Path', attach_dialog)
         if HAVE_GDB_SUPPORT:
-            self.pack_check_button(vbox2, 'GDB BE')
+            self.add_sampling_checkbox(vbox2, 'GDB BE')
+            self.sync_sampling_controls()
             self.pack_string_option(vbox2, 'GDB Path', attach_dialog)
+        if STAT_PYSTACK_BACKEND_ENABLED:
+            self.pack_string_option(vbox2, 'PyStack Path', attach_dialog)
+        else:
+            vbox2.pack_start(gtk.Label('PyStack (not built)'), False, False, 0)
         frame.add(vbox2)
         vbox.pack_start(frame, False, False, 5)
         frame = gtk.Frame(label='Debug Logs')
@@ -1285,10 +1311,7 @@ host[1-10,12,15-20];otherhost[30]
             self.STAT = STAT_FrontEnd()
         for process in processes:
             self.STAT.addSerialProcess(process)
-        if self.options['GDB BE'] is True:
-            self.attach_cb(attach_dialog, False, True, STAT_SERIAL_GDB_ATTACH)
-        else:
-            self.attach_cb(attach_dialog, False, True, STAT_SERIAL_ATTACH)
+        self.attach_cb(attach_dialog, False, True, STAT_SERIAL_ATTACH)
         return True
 
     def launch_application_cb(self, entry=None, attach_dialog=None, in_args=None):
@@ -1364,6 +1387,10 @@ host[1-10,12,15-20];otherhost[30]
 
     def attach_cb(self, attach_dialog, launch, serial, application_option=STAT_ATTACH):
         """Callback to attach to a job and gather a stack trace."""
+        self.enforce_stack_sample_option_compatibility()
+        if self.options['Use PyStack'] and not STAT_PYSTACK_BACKEND_ENABLED:
+            show_error_dialog('PyStack support was not enabled in this build.', self)
+            return False
         if serial is False:
             self.serial_attach = False
             self.process_list = None
@@ -1393,9 +1420,23 @@ host[1-10,12,15-20];otherhost[30]
         self.STAT.setToolDaemonExe(self.options['Tool Daemon Path'])
         self.STAT.setFilterPath(self.options['Filter Path'])
         os.environ['STAT_GDB'] = self.options['GDB Path']
+        os.environ['STAT_PYSTACK'] = self.options['PyStack Path']
+
+        # Choose the stack sampler used by the daemons.
+        daemon_backend = STAT_DAEMON_BACKEND_NATIVE
+        if self.options['GDB BE']:
+            daemon_backend = STAT_DAEMON_BACKEND_GDB
+        elif self.options['Use PyStack']:
+            daemon_backend = STAT_DAEMON_BACKEND_PYSTACK
+        self.STAT.setDaemonBackend(daemon_backend)
+
+        # Use PyStack attach modes for existing jobs or processes. New jobs use STAT_LAUNCH.
+        if self.options['Use PyStack'] and not launch:
+            application_option = STAT_SERIAL_PYSTACK_ATTACH if serial else STAT_PYSTACK_ATTACH
+        if self.options['GDB BE']:
+            application_option = STAT_SERIAL_GDB_ATTACH if serial else STAT_GDB_ATTACH
+
         log_type = STAT_LOG_NONE
-        if self.options['GDB BE'] and application_option != STAT_SERIAL_GDB_ATTACH:
-            application_option = STAT_GDB_ATTACH
         if self.options['Log Frontend']:
             log_type |= STAT_LOG_FE
         if self.options['Log Backend']:
@@ -1483,7 +1524,7 @@ host[1-10,12,15-20];otherhost[30]
             self.on_fatal_error()
             return False
 
-        if application_option != STAT_SERIAL_ATTACH and application_option != STAT_SERIAL_GDB_ATTACH:
+        if application_option != STAT_SERIAL_ATTACH and application_option != STAT_SERIAL_GDB_ATTACH and application_option != STAT_SERIAL_PYSTACK_ATTACH:
             while 1:
                 run_gtk_main_loop()
                 ret = self.STAT.connectMrnetTree(False)
@@ -1631,6 +1672,40 @@ host[1-10,12,15-20];otherhost[30]
         """Callback to kill the job."""
         self.set_action_sensitivity('new')
 
+    def request_stack_sample(self, trace_frequency):
+        """Send one sample request using the current GUI options."""
+        self.enforce_stack_sample_option_compatibility()
+        sample_type = 0
+        if self.options['Sample Type'] == 'function and pc':
+            sample_type += STAT_SAMPLE_PC
+        if self.options['Sample Type'] == 'module offset':
+            sample_type += STAT_SAMPLE_MODULE_OFFSET
+        if self.options['Sample Type'] == 'function and line':
+            sample_type += STAT_SAMPLE_LINE
+        if self.options['Edge Type'] != 'full list':
+            sample_type += STAT_SAMPLE_COUNT_REP
+        if self.options['With Threads']:
+            sample_type += STAT_SAMPLE_THREADS
+        if self.options['Use PyStack'] and not self.options['GDB BE']:
+            sample_type |= STAT_SAMPLE_PYSTACK
+        if self.options['With Children']:
+            sample_type += STAT_SAMPLE_CHILDREN
+        if self.options['With OpenMP'] and HAVE_OPENMP_SUPPORT:
+            sample_type += STAT_SAMPLE_OPENMP
+        if self.options['With CUDA Quick'] and HAVE_GDB_SUPPORT:
+            sample_type += STAT_SAMPLE_CUDA_QUICK
+        if self.options['Gather Python Traces']:
+            sample_type += STAT_SAMPLE_PYTHON
+        if self.options['Clear On Sample']:
+            sample_type += STAT_SAMPLE_CLEAR_ON_SAMPLE
+
+        # STAT expects these mode values for the PyStack adapter.
+        native_mode = 'Python + Native' if self.options['PyStack Frames'] == 'Python + C/C++' else 'Python Only'
+        return self.STAT.sampleStackTraces(
+            sample_type, 1, trace_frequency, self.options['Num Retries'],
+            self.options['Retry Frequency (us)'], self.options['Max Threads Per Daemon'],
+            False, var_spec_to_string(self.var_spec), native_mode)
+
     def update_sample_options(self):
         """Update sample options."""
         for option in ['Num Retries', 'Retry Frequency (us)', 'Max Threads Per Daemon', 'Run Time Before Sample (sec)', 'Num Traces', 'Trace Frequency (ms)']:
@@ -1697,26 +1772,7 @@ host[1-10,12,15-20];otherhost[30]
             self.on_fatal_error()
             return ret
 
-        sample_type = 0
-        if self.options['Sample Type'] == 'function and pc':
-            sample_type += STAT_SAMPLE_PC
-        if self.options['Sample Type'] == 'module offset':
-            sample_type += STAT_SAMPLE_MODULE_OFFSET
-        if self.options['Sample Type'] == 'function and line':
-            sample_type += STAT_SAMPLE_LINE
-        if self.options['Edge Type'] != 'full list':
-            sample_type += STAT_SAMPLE_COUNT_REP
-        if self.options['With Threads']:
-            sample_type += STAT_SAMPLE_THREADS
-        if self.options['With OpenMP'] and HAVE_OPENMP_SUPPORT:
-            sample_type += STAT_SAMPLE_OPENMP
-        if self.options['With CUDA Quick'] and HAVE_GDB_SUPPORT:
-            sample_type += STAT_SAMPLE_CUDA_QUICK
-        if self.options['Gather Python Traces']:
-            sample_type += STAT_SAMPLE_PYTHON
-        if self.options['Clear On Sample']:
-            sample_type += STAT_SAMPLE_CLEAR_ON_SAMPLE
-        ret = self.STAT.sampleStackTraces(sample_type, 1, 1, self.options['Num Retries'], self.options['Retry Frequency (us)'], self.options['Max Threads Per Daemon'], False, var_spec_to_string(self.var_spec))
+        ret = self.request_stack_sample(1)
 
         if ret != STAT_OK:
             show_error_dialog('Failed to sample stack trace:\n%s' % self.STAT.getLastErrorMessage(), self)
@@ -1788,26 +1844,7 @@ host[1-10,12,15-20];otherhost[30]
                 return ret
             self.set_action_sensitivity('paused')
 
-            sample_type = 0
-            if self.options['Sample Type'] == 'function and pc':
-                sample_type += STAT_SAMPLE_PC
-            if self.options['Sample Type'] == 'module offset':
-                sample_type += STAT_SAMPLE_MODULE_OFFSET
-            if self.options['Sample Type'] == 'function and line':
-                sample_type += STAT_SAMPLE_LINE
-            if self.options['Edge Type'] != 'full list':
-                sample_type += STAT_SAMPLE_COUNT_REP
-            if self.options['With Threads']:
-                sample_type += STAT_SAMPLE_THREADS
-            if self.options['With OpenMP'] and HAVE_OPENMP_SUPPORT:
-                sample_type += STAT_SAMPLE_OPENMP
-            if self.options['With CUDA Quick'] and HAVE_GDB_SUPPORT:
-                sample_type += STAT_SAMPLE_CUDA_QUICK
-            if self.options['Gather Python Traces']:
-                sample_type += STAT_SAMPLE_PYTHON
-            if self.options['Clear On Sample']:
-                sample_type += STAT_SAMPLE_CLEAR_ON_SAMPLE
-            ret = self.STAT.sampleStackTraces(sample_type, 1, 0, self.options['Num Retries'], self.options['Retry Frequency (us)'], self.options['Max Threads Per Daemon'], False, var_spec_to_string(self.var_spec))
+            ret = self.request_stack_sample(0)
             if ret != STAT_OK:
                 if ret == STAT_APPLICATION_EXITED:
                     ret_val = STAT_APPLICATION_EXITED
@@ -2470,30 +2507,183 @@ host[1-10,12,15-20];otherhost[30]
         self.attached = False
         self.show_all()
 
+    def get_sampling_backend(self):
+        """Return the backend selected by the existing CLI and saved preference."""
+        return 'pystack' if self.options['Use PyStack'] else 'dyninst'
+
+    def valid_sample_types_for_backend(self):
+        """Limit Python sampling to frame identities supported by its adapter."""
+        if self.options['Use PyStack']:
+            return ['function only', 'function and line']
+        return self.types['Sample Type']
+
+    def enforce_stack_sample_option_compatibility(self):
+        """Normalize frame choices and clear options unsupported by the backend."""
+        valid = self.valid_sample_types_for_backend()
+        # A Dyninst PC or module-offset selection needs a supported format when switching to PyStack.
+        if self.options['Sample Type'] not in valid:
+            self.options['Sample Type'] = 'function and line'
+        if self.get_sampling_backend() == 'pystack':
+            self.options['Gather Python Traces'] = False
+            self.options['With OpenMP'] = False
+            self.options['GDB BE'] = False
+            self.options['With CUDA Quick'] = False
+        else:
+            self.options['With Children'] = False
+
+    def sync_frame_format_buttons(self):
+        """Enable supported frame formats and select the format stored in the sampling options."""
+        valid = self.valid_sample_types_for_backend()
+        for option, button in getattr(self, 'sample_type_radio_buttons', {}).items():
+            button.set_sensitive(option in valid)
+            if option == self.options['Sample Type'] and not button.get_active():
+                button.set_active(True)
+
+    def sync_sampling_controls(self):
+        """Reflect the current backend and sampling options in the dialog controls."""
+        pystack = self.options['Use PyStack']
+        if self.pystack_frames is not None:
+            self.pystack_frames.set_sensitive(pystack)
+
+        # Both backends support threads. Only PyStack supports children; the other checkboxes are native options.
+        for option, button in self.stack_sample_controls.items():
+            if option == 'With Threads':
+                continue
+            enabled = pystack if option == 'With Children' else not pystack
+            button.set_sensitive(enabled)
+            button.set_active(self.options[option])
+
+        spinner = getattr(self, 'spinners', {}).get('Max Threads Per Daemon')
+        if spinner is not None:
+            spinner.set_sensitive(bool(self.options.get('With Threads')))
+
+    def on_sampling_backend_toggled(self, radio_button, backend):
+        """Apply the selected backend to the sampling options, then refresh the dialog."""
+        if not radio_button.get_active():
+            return
+        self.options['Use PyStack'] = backend == 'pystack'
+        self.enforce_stack_sample_option_compatibility()
+        self.sync_frame_format_buttons()
+        self.sync_sampling_controls()
+
+    def on_sample_type_toggled(self, button, sample_type):
+        """Ignore radio deselection and unsupported frame choices."""
+        if button.get_active() and sample_type in self.valid_sample_types_for_backend():
+            self.options['Sample Type'] = sample_type
+
+    def on_pystack_frames_toggled(self, button, frames):
+        """GTK toggles both radio buttons. Save the choice whose button became active."""
+        if button.get_active():
+            self.options['PyStack Frames'] = frames
+
+    def on_sample_check_button_toggled(self, button, option):
+        """Update the sampling choice and dependent controls."""
+        self.options[option] = button.get_active()
+        if option == 'With Threads':
+            self.spinners['Max Threads Per Daemon'].set_sensitive(button.get_active())
+
+    def add_sampling_radio_group(self, box, choices, selected, on_toggle):
+        """Add one radio button per choice. Only one choice can be active.
+
+        Return the buttons keyed by choice so callers can enable or disable individual choices.
+        """
+        buttons = {}
+        previous_button = None
+        for choice in choices:
+            # None starts a new GTK group. Each later button joins the previous button's group.
+            button = gtk_wrap_new_with_label_from_widget(previous_button, choice)
+            buttons[choice] = button
+            box.pack_start(button, False, False, 0)
+            previous_button = button
+
+        # Restoring the selection can emit "toggled", so connect the handler afterwards.
+        if selected in buttons:
+            buttons[selected].set_active(True)
+        for choice, button in buttons.items():
+            button.connect('toggled', on_toggle, choice)
+        return buttons
+
+    def add_sampling_checkbox(self, box, option):
+        """Add a checkbox for a boolean sampling option, such as With Children."""
+        button = gtk.CheckButton(option)
+
+        # Show the current value first. Later toggles write back to self.options[option].
+        button.set_active(bool(self.options.get(option)))
+        button.connect('toggled', self.on_sample_check_button_toggled, option)
+
+        # sync_sampling_controls() uses this widget to disable options the selected backend cannot use.
+        self.stack_sample_controls[option] = button
+        box.pack_start(button, False, False, 0)
+
+    def add_backend_selector(self, box, editable=True):
+        """Show build-supported backends; changing an attached backend needs reattach."""
+        frame = gtk.Frame(label='Sampling Backend')
+        vbox = gtk.VBox()
+        self.add_sampling_radio_group(vbox, self.types['Sampling Backend'], self.get_sampling_backend(),
+                                self.on_sampling_backend_toggled)
+        vbox.set_sensitive(editable)
+        frame.add(vbox)
+        box.pack_start(frame, False, False, 5)
+
+    def add_pystack_frame_selector(self, box):
+        """Add the Python and mixed Python/C++ frame choices to the dialog."""
+        frame = gtk.Frame(label='PyStack Frames')
+        self.pystack_frames = frame
+        frame.set_tooltip_text('Python + C/C++ includes native frames. With Threads includes additional threads.')
+        vbox = gtk.VBox()
+        self.add_sampling_radio_group(vbox, self.types['PyStack Frames'], self.options['PyStack Frames'],
+                                self.on_pystack_frames_toggled)
+        frame.add(vbox)
+        box.pack_start(frame, False, False, 5)
+
     def pack_sample_options(self, vbox, multiple, attach=False):
         """Pack the sample options into the specified vbox."""
         frame = gtk.Frame(label='Per Sample Options')
         vbox2 = gtk.VBox()
-        self.pack_check_button(vbox2, 'With Threads', False, False, 0)
-        self.pack_spinbutton(vbox2, 'Max Threads Per Daemon')
+
+        self.enforce_stack_sample_option_compatibility()
+        self.add_backend_selector(vbox2, attach or not self.attached)
+        self.stack_sample_controls = {}
+        self.pystack_frames = None
+
+        if STAT_PYSTACK_BACKEND_ENABLED:
+            self.add_pystack_frame_selector(vbox2)
+
+        # Choose whether to sample threads and children.
+        scope_frame = gtk.Frame(label='Process Scope')
+        scope_box = gtk.VBox(spacing=3)
+        self.add_sampling_checkbox(scope_box, 'With Threads')
+        self.add_sampling_checkbox(scope_box, 'With Children')
+        self.pack_spinbutton(scope_box, 'Max Threads Per Daemon')
+        scope_frame.add(scope_box)
+        vbox2.pack_start(scope_frame, False, False, 5)
+
+        # Choose whether to sample OpenMP and with CUDA Quick option.
         if HAVE_OPENMP_SUPPORT:
-            self.pack_check_button(vbox2, 'With OpenMP', False, False, 0)
+            self.add_sampling_checkbox(vbox2, 'With OpenMP')
         if HAVE_GDB_SUPPORT:
-            self.pack_check_button(vbox2, 'With CUDA Quick', False, False, 0)
-        self.pack_check_button(vbox2, 'Gather Python Traces', False, False, 5)
+            self.add_sampling_checkbox(vbox2, 'With CUDA Quick')
+        self.add_sampling_checkbox(vbox2, 'Gather Python Traces')
+
         frame2 = gtk.Frame(label='Stack Frame (node) Sample Options')
         vbox3 = gtk.VBox()
-        self.pack_radio_buttons(vbox3, 'Sample Type')
+        self.sample_type_radio_buttons = self.add_sampling_radio_group(
+            vbox3, self.types['Sample Type'], self.options['Sample Type'], self.on_sample_type_toggled)
+        self.sync_frame_format_buttons()
         frame2.add(vbox3)
         vbox2.pack_start(frame2, False, False, 5)
+
         frame2 = gtk.Frame(label='Process Set (edge) Sample Options')
         vbox3 = gtk.VBox()
         self.pack_radio_buttons(vbox3, 'Edge Type')
         frame2.add(vbox3)
         vbox2.pack_start(frame2, False, False, 5)
 
+        self.sync_sampling_controls()
+
         if attach is False:
             self.pack_spinbutton(vbox2, 'Run Time Before Sample (sec)')
+
         expander = gtk.Expander(label="Advanced")
         hbox = gtk.HBox()
         self.pack_spinbutton(hbox, 'Num Retries')
@@ -2502,6 +2692,7 @@ host[1-10,12,15-20];otherhost[30]
         vbox2.pack_start(expander, False, False, 5)
         frame.add(vbox2)
         vbox.pack_start(frame, False, False, 5)
+
         if multiple:
             frame = gtk.Frame(label='Multiple Sample Options')
             vbox2 = gtk.VBox()
