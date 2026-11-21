@@ -1,6 +1,6 @@
 # STAT integration tests
 
-Integration tests check native and Python application stacks with local MPI or Slurm. The container profile runs
+Integration tests check native and Python application stacks with local MPI, Slurm, or Flux. The container profile runs
 ranks in Docker or nested Enroot; a Slurm site profile can also select Pyxis.
 Tests 01–03 form the default matrix; select the remaining tests explicitly.
 The numbered order progresses from basic sampling to nested workloads:
@@ -88,3 +88,20 @@ Add `--dry-run` to either command to inspect that selection without starting wor
 The runner records each selected scenario separately and reports all failures
 at the end of the matrix.
 Python/PyTorch scenarios with readiness records wait for every worker before attaching STAT, with a 90-second startup limit.
+
+## Native tests with Flux
+
+Tests 01–03 can be run in a Flux allocation. Start an interactive allocation and run the suite in the shell it opens:
+
+```bash
+flux alloc -N2 -n4
+NODES=2 bash tests/integration/run-tests.sh --config tests/integration/config-flux-cluster.sh
+```
+
+To reuse an existing allocation from the login node, run `flux jobs`. Find the row for your allocation
+and use its `JOBID` in place of `ALLOCATION_ID` below:
+
+```bash
+NODES=2 flux proxy ALLOCATION_ID bash tests/integration/run-tests.sh \
+  --config tests/integration/config-flux-cluster.sh
+```

@@ -43,6 +43,29 @@ export MASTER_ADDR MASTER_PORT WORKERS_PER_NODE NODES TORCHRUN PYTHON CPU_ONLY
 
 cd "$RUN_DIR"
 pid=
+flux_job=
+
+# STAT attaches to this helper PID once Flux has published the MPI rank table.
+start_flux_debug_launcher() {
+  local deadline=$((SECONDS + 30))
+  local log=flux-debug.log
+
+  flux job attach --read-only --debug --show-exec --label-io "$flux_job" \
+    </dev/null >/dev/null 2>"$log" &
+  pid=$!
+
+  # The helper reports readiness as "<timestamp>s: exec.shell.start".
+  while kill -0 "$pid" 2>/dev/null && (( SECONDS < deadline )); do
+    if grep -qsE '^[^ ]+s: exec[.]shell[.]start([[:space:]]|$)' "$log"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+
+  echo "Flux debug launcher did not become ready for job $flux_job" >&2
+  cat "$log" >&2
+  return 1
+}
 
 finish() {
   status=$?
@@ -51,6 +74,10 @@ finish() {
   if [ -n "$pid" ]; then
     kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
+  fi
+
+  if [ -n "$flux_job" ]; then
+    flux cancel "$flux_job" 2>/dev/null || true
   fi
 
   # Keep sampled trees visible even when attachment or validation fails.
@@ -88,6 +115,8 @@ if [ "$STAT_INVOCATION" = serial ]; then
   # A local launcher may own several workers even though STAT attaches to one PID.
   workers=${SERIAL_WORKERS:-1}
   launcher=()
+elif [ "$EXECUTION" = flux ]; then
+  launcher=(flux submit -N "$NODES" -n "$launcher_ranks" -t "${CASE_TIMEOUT}s" --output=application.log)
 elif [ "$EXECUTION" = slurm ]; then
   launcher=(srun --mpi="$MPI_MODE" --nodes="$NODES" --ntasks="$launcher_ranks"
             --cpus-per-task="$OMP_NUM_THREADS" --kill-on-bad-exit=1 "${SRUN_OPTIONS[@]}")
@@ -124,11 +153,20 @@ else
   printf '%q ' "${launcher[@]}" "${APPLICATION[@]}"
   printf '\n'
 
-  "${launcher[@]}" "${APPLICATION[@]}" > application.log 2>&1 &
-  pid=$!
+  if [ "$EXECUTION" = flux ]; then
+    flux_job=$("${launcher[@]}" "${APPLICATION[@]}")
+    echo "Flux application job: $flux_job"
+  else
+    "${launcher[@]}" "${APPLICATION[@]}" > application.log 2>&1 &
+    pid=$!
+  fi
 
   # Attach to the launcher, or to the local Python PID in serial mode.
   if [ "$mode" = stat ]; then
+    if [ "$EXECUTION" = flux ]; then
+      start_flux_debug_launcher
+    fi
+
     # Python launchers can be discoverable before their application workers exist.
     if [ -n "${READY_PATTERN:-}" ]; then
       deadline=$((SECONDS + 90))
@@ -151,8 +189,15 @@ else
     "${stat[@]}" "$pid" 2>&1 | tee stat-cl.log
   fi
 
-  wait "$pid"
-  pid=
+  if [ "$EXECUTION" = flux ]; then
+    flux job status "$flux_job"
+    flux_job=
+  fi
+
+  if [ -n "$pid" ]; then
+    wait "$pid"
+    pid=
+  fi
 fi
 
 cat application.log
