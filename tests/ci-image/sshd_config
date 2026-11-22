@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+
+# rootless, loopback-only SSH for the disposable CI smoke.
+# each invocation supplies temporary host/client key paths and its current user.
+Port 2222
+ListenAddress 127.0.0.1
+StrictModes no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM no
+PermitRootLogin no

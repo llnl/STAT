@@ -105,3 +105,27 @@ and use its `JOBID` in place of `ALLOCATION_ID` below:
 NODES=2 flux proxy ALLOCATION_ID bash tests/integration/run-tests.sh \
   --config tests/integration/config-flux-cluster.sh
 ```
+
+## Remote Connect integration
+
+From the checkout root on the workload host, run the native tests through remote connect feature as:
+
+```bash
+export STAT_PREFIX=/path/to/stat-install
+export STAT_TEST_REMOTE_LOGIN=user@localhost
+bash tests/integration/run-tests.sh --config tests/integration/config-local-cluster.sh --remote 01 02 03
+```
+
+CI step 3.7 runs scenario 12 directly to check the SSH session lifecycle, including detach, shutdown, and client EOF.
+
+### Flux test with Remote Connect
+
+If Flux scheduler is available, one can run tests 01–03 with remote connect with Flux.
+From the checkout root on the Flux login host, replace `ALLOCATION_ID` with the two-node allocation's `JOBID`
+as shown in [Native tests with Flux](#native-tests-with-flux).
+
+```bash
+allocation=ALLOCATION_ID
+NODES=2 STAT_TEST_FLUX_ALLOCATION="$allocation" flux proxy "$allocation" \
+  bash tests/integration/run-tests.sh --config tests/integration/config-flux-cluster.sh --remote
+```

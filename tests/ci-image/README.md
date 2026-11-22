@@ -77,3 +77,26 @@ Look for `CACHED` in the build log. STAT itself is rebuilt from every checkout.
 Some Python tests run through `mpirun` without using MPI themselves. The container profile enables
 `STAT_TEST_MPI_REGISTER` to initialize MPI through mpi4py before these workloads start, allowing LaunchMON
 to discover them with the container's OpenMPI 4 runtime.
+
+## SSH integration
+
+To rerun just the SSH tests, complete steps 1 and 2 under [Run the same phases locally](#run-the-same-phases-locally).
+From the checkout root, use the same shell so `$results` still points to the directory containing `stat-install`.
+
+```bash
+# let the container's UID 1000 traverse the temporary results directory and create test outputs
+chmod a+wx "$results"
+docker run --rm --init --user 1000:1000 --entrypoint /opt/stat-ci/with-loopback-ssh.sh \
+  --cap-add SYS_PTRACE --shm-size=256m \
+  --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  -e HOME=/tmp -e ENROOT_DATA_PATH=/tmp/enroot/data \
+  -e ENROOT_CACHE_PATH=/tmp/enroot/cache -e ENROOT_RUNTIME_PATH=/tmp/enroot/run \
+  -v "$PWD:/workspace:ro" -v "$results:/results" stat-ci:deps \
+  timeout --kill-after=10s 900 bash /workspace/tests/ci-image/smoke-remote-connect.sh \
+    /workspace /results/stat-install /results/ssh
+```
+
+The container starts its own temporary SSH service and generates its keys. The smoke test samples a two-rank MPI job
+and verifies that it resumes after detach, server shutdown, and connection close. It then runs integration cases over SSH
+with ordinary and Enroot-contained ranks. A successful run ends with `PASS: SSH remote control and shared integration matrix`.
+Inspect `$results/ssh/` for the three cleanup checks and `$results/integration/*/summary.tsv` for per-scenario exit codes.

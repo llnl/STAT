@@ -1,0 +1,62 @@
+#!/bin/sh
+# @configure_input@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+
+# start the STAT server that handles remote control requests over SSH standard input/output.
+# set the installed Python and native library environment before starting the server.
+
+export prefix=@prefix@
+export exec_prefix=@exec_prefix@
+
+if test -n "$STAT_PREFIX" ; then
+    export prefix=$STAT_PREFIX
+fi
+
+export PYTHON_PREFIX=${prefix}
+export PYTHON_EXEC_PREFIX=${exec_prefix}
+
+# choose a non-loopback callback address for LaunchMON daemons.
+detect_frontend_connect_host() {
+    if test -n "$LMON_FE_HOSTNAME_TO_CONN" ; then
+        printf '%s\n' "$LMON_FE_HOSTNAME_TO_CONN"
+        return 0
+    fi
+    if command -v hostname >/dev/null 2>&1 ; then
+        for candidate in $(hostname -I 2>/dev/null || true) ; do
+            case "$candidate" in
+                127.*|::1) ;;
+                *) printf '%s\n' "$candidate"; return 0 ;;
+            esac
+        done
+    fi
+    hostname -f 2>/dev/null || hostname
+}
+
+datarootdir=@datarootdir@
+. "@datadir@/@PACKAGE@/stat-env.sh"
+
+if test -z "$DYNINSTAPI_RT_LIB" ; then
+    # runtime overrides use shell variables; @STACKWALKERPREFIX@ is the configure-time fallback.
+    if test -n "$STACKWALKER_PREFIX" ; then
+        export DYNINSTAPI_RT_LIB=$STACKWALKER_PREFIX/lib/libdyninstAPI_RT.so
+    elif test -n "$STACKWALKERPREFIX" ; then
+        export DYNINSTAPI_RT_LIB=$STACKWALKERPREFIX/lib/libdyninstAPI_RT.so
+    elif test -n "@STACKWALKERPREFIX@" ; then
+        export DYNINSTAPI_RT_LIB=@STACKWALKERPREFIX@/lib/libdyninstAPI_RT.so
+    fi
+fi
+if test -z "$LMON_FE_HOSTNAME_TO_CONN" ; then
+    export LMON_FE_HOSTNAME_TO_CONN=$(detect_frontend_connect_host)
+fi
+
+# start the stdio server in the selected Flux instance after loading its runtime PATH.
+if test "$1" = "--flux-allocation" ; then
+    if test -z "$2" ; then
+        echo "stat-gui-server: --flux-allocation requires an allocation ID" >&2
+        exit 2
+    fi
+    exec flux proxy -- "$2" 'exec @STATPYTHON@ -m remote.stat_server'
+fi
+
+exec @STATPYTHON@ -m remote.stat_server "$@"
