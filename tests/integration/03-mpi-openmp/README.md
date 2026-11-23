@@ -1,4 +1,4 @@
-# Dyninst: MPI main threads and OpenMP workers
+# Dyninst and GDB: MPI main threads and OpenMP workers
 
 This synthetic MPI/OpenMP example repeats a small workload inside a timed parallel region. We check each rank’s main-thread
 path and, in the threads scenario, all application threads across the OpenMP teams.
@@ -9,7 +9,7 @@ The sampled execution state could look like this:
 Example: 8 MPI ranks, 4 OpenMP threads per rank
 
 Rank main threads: pcount=8; tcount=8 with thread sampling
-_start → * → main
+main
 └── run_rank_workload
     └── * → run_thread_work → process_epoch → compute_block → sampled_delay
 
@@ -24,7 +24,8 @@ run_thread_work
 
 The container profile runs **4 MPI ranks with 4 OpenMP threads per rank**.
 
-The runtime check validates the collected output and snapshots against:
+Run the GDB variants with `run-tests.sh 03:gdb 03:gdb-threads`. They check the workload call chain and rank coverage
+in both modes and the full OpenMP team count with thread sampling.
 
 ### Processes
 
@@ -42,8 +43,6 @@ The runtime check validates the collected output and snapshots against:
       {
         "paths_any": [
           [
-            "_start",
-            "*",
             "main@mpi_openmp.cpp:*",
             "*run_rank_workload@mpi_openmp.cpp:*",
             "*",
@@ -59,7 +58,8 @@ The runtime check validates the collected output and snapshots against:
       }
     ],
     "forbidden": ["\\btcount=\"[0-9]+\""]
-  }
+  },
+  "gdb": "dyninst"
 }
 ```
 
@@ -79,8 +79,6 @@ The runtime check validates the collected output and snapshots against:
       {
         "paths_any": [
           [
-            "_start",
-            "*",
             "main@mpi_openmp.cpp:*",
             "*run_rank_workload@mpi_openmp.cpp:*",
             "*",
@@ -97,8 +95,6 @@ The runtime check validates the collected output and snapshots against:
       {
         "paths_any": [
           [
-            "_start",
-            "*",
             "main@mpi_openmp.cpp:*",
             "*run_rank_workload@mpi_openmp.cpp:*",
             "*",
@@ -124,7 +120,8 @@ The runtime check validates the collected output and snapshots against:
         "count": "num_ranks * num_threads"
       }
     ]
-  }
+  },
+  "gdb": "dyninst"
 }
 ```
 

@@ -13,6 +13,11 @@ The stat-gui operation toolbar.
 
 These options are defined as follows:
 
+**Sampling Backend**
+:   Choose Dyninst, PyStack, or GDB before attaching. PyStack and GDB appear when enabled in the build. For GDB, select
+    the debugger executable under **Advanced → Tool Paths**. GDB supports function names with optional source lines.
+    Enable **With Threads** to include additional host threads and, when using `cuda-gdb`, CUDA device traces.
+
 **With Threads**
 :   Sample helper threads in addition to the main thread.
 

@@ -44,7 +44,8 @@ With those launch settings, this block means:
 - That same check uses `attribute: pcount`, `source: ranks` and `count: num_ranks` to require eight distinct ranks
   on the path. With eight launched ranks and no rank subset specified, these must be rank IDs 0–7.
 
-`stdout` describes log checks. `dyninst` and `pystack` describe stack checks for their respective backends.
+`stdout` describes log checks. `dyninst`, `pystack` and `gdb` describe stack checks for their respective backends.
+Use `"gdb": "dyninst"` to reuse the Dyninst checks for GDB.
 
 ## Check lists and alternatives
 

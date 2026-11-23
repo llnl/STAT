@@ -212,6 +212,8 @@ class STATGUI(STATDotWindow):
         types['Sampling Backend'] = ['dyninst']
         if STAT_PYSTACK_BACKEND_ENABLED:
             types['Sampling Backend'].append('pystack')
+        if HAVE_GDB_SUPPORT:
+            types['Sampling Backend'].append('gdb')
         if not hasattr(self, "types"):
             self.types = {}
         for opt in types:
@@ -371,10 +373,12 @@ class STATGUI(STATDotWindow):
             if HAVE_GDB_SUPPORT:
                 if args.gdb is True:
                     self.options['GDB BE'] = True
+                    self.options['Use PyStack'] = False
                 if args.cudaquick is True:
                     self.options['With CUDA Quick'] = True
             if args.pystack is True:
                 self.options['Use PyStack'] = True
+                self.options['GDB BE'] = False
             if args.log is not None:
                 if 'CP' in args.log:
                     self.options['Log CP'] = True
@@ -1253,9 +1257,10 @@ host[1-10,12,15-20];otherhost[30]
         self.pack_string_option(vbox2, 'Tool Daemon Path', attach_dialog)
         self.pack_string_option(vbox2, 'Filter Path', attach_dialog)
         if HAVE_GDB_SUPPORT:
-            self.add_sampling_checkbox(vbox2, 'GDB BE')
-            self.sync_sampling_controls()
-            self.pack_string_option(vbox2, 'GDB Path', attach_dialog)
+            self.gdb_path_controls = gtk.VBox()
+            self.pack_string_option(self.gdb_path_controls, 'GDB Path', attach_dialog)
+            self.gdb_path_controls.set_sensitive(self.get_sampling_backend() == 'gdb')
+            vbox2.pack_start(self.gdb_path_controls, False, False, 0)
         if STAT_PYSTACK_BACKEND_ENABLED:
             self.pack_string_option(vbox2, 'PyStack Path', attach_dialog)
         else:
@@ -1430,10 +1435,10 @@ host[1-10,12,15-20];otherhost[30]
             daemon_backend = STAT_DAEMON_BACKEND_PYSTACK
         self.STAT.setDaemonBackend(daemon_backend)
 
-        # Use PyStack attach modes for existing jobs or processes. New jobs use STAT_LAUNCH.
+        # New jobs keep STAT_LAUNCH regardless of the selected daemon backend.
         if self.options['Use PyStack'] and not launch:
             application_option = STAT_SERIAL_PYSTACK_ATTACH if serial else STAT_PYSTACK_ATTACH
-        if self.options['GDB BE']:
+        elif self.options['GDB BE'] and not launch:
             application_option = STAT_SERIAL_GDB_ATTACH if serial else STAT_GDB_ATTACH
 
         log_type = STAT_LOG_NONE
@@ -1686,7 +1691,7 @@ host[1-10,12,15-20];otherhost[30]
             sample_type += STAT_SAMPLE_COUNT_REP
         if self.options['With Threads']:
             sample_type += STAT_SAMPLE_THREADS
-        if self.options['Use PyStack'] and not self.options['GDB BE']:
+        if self.options['Use PyStack']:
             sample_type |= STAT_SAMPLE_PYSTACK
         if self.options['With Children']:
             sample_type += STAT_SAMPLE_CHILDREN
@@ -2509,27 +2514,32 @@ host[1-10,12,15-20];otherhost[30]
 
     def get_sampling_backend(self):
         """Return the backend selected by the existing CLI and saved preference."""
-        return 'pystack' if self.options['Use PyStack'] else 'dyninst'
+        if self.options['Use PyStack']:
+            return 'pystack'
+        return 'gdb' if HAVE_GDB_SUPPORT and self.options['GDB BE'] else 'dyninst'
 
     def valid_sample_types_for_backend(self):
-        """Limit Python sampling to frame identities supported by its adapter."""
-        if self.options['Use PyStack']:
+        """Return the frame formats produced by the selected sampler."""
+        if self.get_sampling_backend() == 'gdb' and self.options['With CUDA Quick']:
+            return ['function and line']
+        if self.get_sampling_backend() != 'dyninst':
             return ['function only', 'function and line']
         return self.types['Sample Type']
 
     def enforce_stack_sample_option_compatibility(self):
-        """Normalize frame choices and clear options unsupported by the backend."""
-        valid = self.valid_sample_types_for_backend()
-        # A Dyninst PC or module-offset selection needs a supported format when switching to PyStack.
-        if self.options['Sample Type'] not in valid:
-            self.options['Sample Type'] = 'function and line'
-        if self.get_sampling_backend() == 'pystack':
+        """Apply the same backend constraints to CLI, preference and dialog settings."""
+        backend = self.get_sampling_backend()
+        self.options['GDB BE'] = backend == 'gdb'
+        if backend != 'dyninst':
             self.options['Gather Python Traces'] = False
             self.options['With OpenMP'] = False
-            self.options['GDB BE'] = False
-            self.options['With CUDA Quick'] = False
-        else:
+        if backend != 'pystack':
             self.options['With Children'] = False
+        # the GDB backend collects CUDA device traces only when thread sampling is enabled.
+        if backend != 'gdb' or not self.options['With Threads']:
+            self.options['With CUDA Quick'] = False
+        if self.options['Sample Type'] not in self.valid_sample_types_for_backend():
+            self.options['Sample Type'] = 'function and line'
 
     def sync_frame_format_buttons(self):
         """Enable supported frame formats and select the format stored in the sampling options."""
@@ -2541,29 +2551,32 @@ host[1-10,12,15-20];otherhost[30]
 
     def sync_sampling_controls(self):
         """Reflect the current backend and sampling options in the dialog controls."""
-        pystack = self.options['Use PyStack']
+        self.enforce_stack_sample_option_compatibility()
+        self.sync_frame_format_buttons()
+        backend = self.get_sampling_backend()
         if self.pystack_frames is not None:
-            self.pystack_frames.set_sensitive(pystack)
+            self.pystack_frames.set_sensitive(backend == 'pystack')
+        if self.gdb_path_controls is not None:
+            self.gdb_path_controls.set_sensitive(backend == 'gdb')
 
-        # Both backends support threads. Only PyStack supports children; the other checkboxes are native options.
+        # enable each checkbox only when the current sampling mode supports it.
+        enabled = {'With Threads': True, 'With Children': backend == 'pystack',
+                   'Gather Python Traces': backend == 'dyninst', 'With OpenMP': backend == 'dyninst',
+                   'With CUDA Quick': backend == 'gdb' and self.options['With Threads']}
         for option, button in self.stack_sample_controls.items():
-            if option == 'With Threads':
-                continue
-            enabled = pystack if option == 'With Children' else not pystack
-            button.set_sensitive(enabled)
+            button.set_sensitive(enabled[option])
             button.set_active(self.options[option])
 
-        spinner = getattr(self, 'spinners', {}).get('Max Threads Per Daemon')
-        if spinner is not None:
-            spinner.set_sensitive(bool(self.options.get('With Threads')))
+        self.spinners['Max Threads Per Daemon'].set_sensitive(self.options['With Threads'])
+        for option in ('Num Retries', 'Retry Frequency (us)'):
+            self.spinners[option].set_sensitive(backend != 'gdb' or self.options['With Threads'])
 
     def on_sampling_backend_toggled(self, radio_button, backend):
         """Apply the selected backend to the sampling options, then refresh the dialog."""
         if not radio_button.get_active():
             return
         self.options['Use PyStack'] = backend == 'pystack'
-        self.enforce_stack_sample_option_compatibility()
-        self.sync_frame_format_buttons()
+        self.options['GDB BE'] = backend == 'gdb'
         self.sync_sampling_controls()
 
     def on_sample_type_toggled(self, button, sample_type):
@@ -2578,9 +2591,9 @@ host[1-10,12,15-20];otherhost[30]
 
     def on_sample_check_button_toggled(self, button, option):
         """Update the sampling choice and dependent controls."""
-        self.options[option] = button.get_active()
-        if option == 'With Threads':
-            self.spinners['Max Threads Per Daemon'].set_sensitive(button.get_active())
+        if self.options[option] != button.get_active():
+            self.options[option] = button.get_active()
+            self.sync_sampling_controls()
 
     def add_sampling_radio_group(self, box, choices, selected, on_toggle):
         """Add one radio button per choice. Only one choice can be active.
@@ -2645,6 +2658,7 @@ host[1-10,12,15-20];otherhost[30]
         self.add_backend_selector(vbox2, attach or not self.attached)
         self.stack_sample_controls = {}
         self.pystack_frames = None
+        self.gdb_path_controls = None
 
         if STAT_PYSTACK_BACKEND_ENABLED:
             self.add_pystack_frame_selector(vbox2)
@@ -2679,8 +2693,6 @@ host[1-10,12,15-20];otherhost[30]
         frame2.add(vbox3)
         vbox2.pack_start(frame2, False, False, 5)
 
-        self.sync_sampling_controls()
-
         if attach is False:
             self.pack_spinbutton(vbox2, 'Run Time Before Sample (sec)')
 
@@ -2688,6 +2700,7 @@ host[1-10,12,15-20];otherhost[30]
         hbox = gtk.HBox()
         self.pack_spinbutton(hbox, 'Num Retries')
         self.pack_spinbutton(hbox, 'Retry Frequency (us)')
+        self.sync_sampling_controls()
         expander.add(hbox)
         vbox2.pack_start(expander, False, False, 5)
         frame.add(vbox2)

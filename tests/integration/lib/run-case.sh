@@ -16,6 +16,7 @@ WITH_CHILDREN=${WITH_CHILDREN:-0}
 STAT_INVOCATION=attach
 
 case "$variant" in
+  gdb|gdb-threads) BACKEND=gdb ;;
   threads) APP_THREADS=2 ;;
   parent-only) WITH_CHILDREN=0 ;;
 esac
@@ -111,9 +112,12 @@ stat=("$STAT_PREFIX/bin/stat-cl" -S -t "$SAMPLE_COUNT" -T "$interval_ms")
 
 [ "${WITH_LINES:-1}" != 1 ] || stat+=(-i)
 [ "$BACKEND" != pystack ] || stat+=(-K)
+[ "$BACKEND" != gdb ] || stat+=(-G)
 [ "$WITH_CHILDREN" != 1 ] || stat+=(--with-children)
 [ "${WITH_NATIVE:-0}" != 1 ] || stat+=(--native)
-[ "$variant" != threads ] || stat+=(-w)
+case "$variant" in
+  threads|gdb-threads) stat+=(-w) ;;
+esac
 
 if [ "$STAT_INVOCATION" = launch ] && [ "$mode" = stat ]; then
   # STAT owns job creation; inherited output keeps tee open until the workload finishes.
@@ -164,6 +168,11 @@ if [ "$mode" = stat ] && [ "$STAT_INVOCATION" != launch ]; then
 fi
 
 check_set="${CHECK_SET:-$variant}"
+case "$id:$variant" in
+  03:gdb) check_set=processes ;;
+  03:gdb-threads) check_set=threads ;;
+  *:gdb) check_set=default ;;
+esac
 [ "$variant" != srun ] || check_set=default
 [ "$variant" != torchrun ] || check_set=default
 [ "$variant" != direct ] || check_set=application

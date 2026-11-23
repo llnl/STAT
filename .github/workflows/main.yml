@@ -228,12 +228,15 @@ jobs:
         id: integration-docker
         if: ${{ !cancelled() && steps.build-stat.outcome == 'success' }}
         run: |
+          gdb_tests=(01:gdb 02:gdb 03:gdb 03:gdb-threads)
+
           docker run --rm \
             --platform "${{ matrix.platform }}" \
             "${docker_args[@]}" \
             "${docker_mounts[@]}" \
             stat-ci:deps \
-            timeout --kill-after=10s 1200 bash /workspace/tests/integration/run-tests.sh "${integration_tests[@]}" \
+            timeout --kill-after=10s 1200 bash /workspace/tests/integration/run-tests.sh \
+              "${integration_tests[@]}" "${gdb_tests[@]}" \
             2>&1 | tee "$RUNNER_TEMP/stat-ci/integration-mpi.log"
 
       - name: 3.6 Integration tests in container (via Enroot)

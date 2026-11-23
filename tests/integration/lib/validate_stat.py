@@ -12,6 +12,9 @@ import time
 from graph_counts import check_path, read_paths, require
 
 
+BACKENDS = ("dyninst", "pystack", "gdb")
+
+
 def resolve_count(value, layout):
     if isinstance(value, str):
         require(value in layout and layout[value] is not None, f'Unknown count or missing runtime count: {value}')
@@ -93,15 +96,21 @@ def resolve_path_checks(rules, layout):
 def read_checks(path, name, backend, layout):
     """Load expectations, resolve their counts, and select the requested backend."""
     checks = read_check_block(path, name)
-    unknown = set(checks) - {'stdout', 'dyninst', 'pystack', 'dataloader_workers'}
+    unknown = set(checks) - {'stdout', 'dataloader_workers', *BACKENDS}
     if unknown:
         raise ValueError(f'Unknown top-level checks: {sorted(unknown)}')
 
     stdout = output_rules(layout, expand=True, **checks.get('stdout', {}))
 
-    # Resolve all declared checks, including when this invocation checks stdout only.
-    for backend_name in ('dyninst', 'pystack'):
+    # validate each check object once, including for stdout-only checks
+    for backend_name in BACKENDS:
         block = checks.get(backend_name, {})
+        if isinstance(block, str):
+            if block not in BACKENDS or not isinstance(checks.get(block), dict):
+                raise ValueError(f'{backend_name} must reference a backend with its own check block: {block!r}')
+            continue
+        if not isinstance(block, dict):
+            raise ValueError(f'{backend_name} checks must be a JSON object or a backend reference')
         unknown = set(block) - {'required', 'forbidden', 'each_sample', 'across_samples'}
         if unknown:
             raise ValueError(f'Unknown {backend_name} checks: {sorted(unknown)}')
@@ -110,6 +119,8 @@ def read_checks(path, name, backend, layout):
         resolve_path_checks(block.get('across_samples', []), layout)
 
     block = checks.get(backend, {})
+    if isinstance(block, str):
+        block = checks[block]
     return {
         'backend': backend if backend in checks else None,
         'stdout': stdout,
@@ -302,7 +313,7 @@ def main():
     parser.add_argument('--num-workers', type=positive)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--results', type=Path)
-    parser.add_argument('--backend', choices=('dyninst', 'pystack'))
+    parser.add_argument('--backend', choices=BACKENDS)
     parser.add_argument('--sample-count', type=positive)
     parser.add_argument('--wait-output', type=float, default=0)
     args = parser.parse_args()
