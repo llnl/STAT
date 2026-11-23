@@ -1,0 +1,335 @@
+/* STAT user guide overrides for the Alabaster theme stylesheet, alabaster.css. */
+
+/* The footer template uses the same two columns as the Sphinx document. */
+body {
+    --sidebar-size: 14.5rem;
+    --divider: #e2e8f0;
+    --heading: #17283d;
+    --muted: #64748b;
+    --surface: #f5f8fb;
+    padding: 0;
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
+}
+
+html { scroll-padding-top: 2rem; }
+
+div.document,
+.guide-footer-layout {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: var(--sidebar-size) minmax(0, 1fr);
+    gap: 3.5rem;
+    width: 100%;
+    max-width: 75rem;
+    margin: 0 auto;
+    padding: 2rem 2.5rem 2.5rem;
+}
+
+.guide-footer-layout { padding-block: 0; }
+
+div.documentwrapper,
+.guide-footer-content {
+    grid-area: 1 / 2;
+    min-width: 0;
+}
+
+div.bodywrapper { margin: 0; }
+
+div.body,
+.guide-footer-content {
+    max-width: 76ch;
+    padding: 0;
+}
+
+div.footer {
+    display: block;
+    width: auto;
+    margin: 0;
+    padding: 1rem 0 1.5rem;
+    border-top: 1px solid var(--divider);
+    font-size: .75rem;
+    line-height: 1.7;
+    text-align: start;
+}
+
+/* Chapter headings, paragraphs, and command reference entries. */
+div.body :is(h1, h2, h3, h4) {
+    color: var(--heading);
+    font-weight: 650;
+    line-height: 1.3;
+    letter-spacing: -.025em;
+}
+
+div.body h1 {
+    margin: 0 0 1.25rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--divider);
+    font-size: 2.15rem;
+}
+
+div.body h2 {
+    margin: 1.125rem 0 .625rem;
+    font-size: 1.5rem;
+}
+
+div.body h3 {
+    margin: 1rem 0 .5rem;
+    font-size: 1.15rem;
+}
+
+div.body :is(p, li) { line-height: 1.8; }
+div.body p { margin: 0 0 1rem; }
+
+section > p,
+dd > p {
+    text-align: justify;
+    hyphens: auto;
+    overflow-wrap: break-word;
+}
+
+div.body :is(ol, ul) { margin-block: .5rem 1rem; }
+div.body li > p { margin-bottom: .25rem; line-height: 1.6; }
+div.body dt { margin-top: .875rem; overflow-wrap: anywhere; }
+div.body dd { margin: .25rem 0 .875rem 1.125rem; }
+div.body :is(strong, dt) { color: var(--heading); font-weight: 650; }
+
+div.body a.reference {
+    border: 0;
+    text-decoration: underline;
+    text-decoration-color: #b8d0e0;
+    text-underline-offset: 3px;
+}
+
+div.body a.reference:hover { text-decoration-color: currentColor; }
+
+div.body code {
+    padding: 2px 5px;
+    border: 1px solid var(--divider);
+    border-radius: 4px;
+}
+
+div.body :not(pre) > code .pre { white-space: normal; overflow-wrap: anywhere; }
+
+div.body pre {
+    overflow-x: auto;
+    padding: 1rem;
+    border: 1px solid #bccbdc;
+    border-inline-start: 3px solid #7394b4;
+    border-radius: 5px;
+    font-size: .82rem;
+    line-height: 1.55;
+}
+
+/* Tables and figures align with the prose column. */
+div.body table.docutils {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    font-size: .9rem;
+}
+
+div.body table.docutils :is(td, th) {
+    border: 1px solid var(--divider);
+    padding: .5rem .75rem;
+    vertical-align: top;
+}
+
+div.body table.docutils th { background: var(--surface); }
+div.body table.docutils p { margin: 0; text-align: start; }
+
+div.body table.dependency-table {
+    display: table;
+    table-layout: fixed;
+    overflow-wrap: anywhere;
+}
+
+.dependency-table a { hyphens: none; }
+.dependency-table caption { padding-bottom: .625rem; text-align: start; }
+
+div.body figure {
+    box-sizing: border-box;
+    margin: 1.5rem 0 1.75rem;
+    padding: 1.25rem 1.25rem .875rem;
+    border-radius: .5rem;
+    background: #fafbfd;
+}
+
+figure img {
+    display: block;
+    height: auto;
+    max-width: 100%;
+    max-height: 620px;
+    margin-inline: auto;
+    object-fit: contain;
+}
+
+figure:not(.use-figure-width) img { width: auto !important; }
+
+div.body figure.fill-figure img { width: 100% !important; }
+
+div.body figure.align-center { margin-inline: auto; }
+
+div.body figcaption p {
+    margin: .75rem 0 0;
+    color: var(--muted);
+    font-size: .83rem;
+    font-style: normal;
+    line-height: 1.6;
+    text-align: center;
+}
+
+.body .caption-number { color: #263548; font-weight: 600; }
+
+/* Show the 1150 x 630 application window within the original desktop capture. */
+.stat-view-screenshot .image-reference {
+    display: block;
+    aspect-ratio: 1150 / 630;
+    overflow: hidden;
+}
+
+.stat-view-screenshot .image-reference img {
+    width: calc(100% * 3840 / 1150) !important;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+}
+
+/* Navigation and search. */
+div.sphinxsidebar {
+    grid-area: 1 / 1;
+    align-self: start;
+    position: sticky;
+    top: 2rem;
+    box-sizing: border-box;
+    width: auto;
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+    margin: 0;
+    padding: 0 1.5rem 1.5rem 0;
+    border-inline-end: 1px solid var(--divider);
+}
+
+div.sphinxsidebarwrapper { padding: 0; }
+
+div.sphinxsidebar h1.logo {
+    margin: 0 0 1.75rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1.45;
+}
+
+div.sphinxsidebar :is(h3, h3 a) {
+    margin: 1.875rem 0 .75rem;
+    color: var(--muted);
+    font-size: .75rem;
+    font-weight: 650;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+}
+
+div.sphinxsidebar a,
+div.sphinxsidebar a:hover { border: 0; text-decoration: none; }
+
+div.sphinxsidebar ul li > a {
+    display: block;
+    padding: .25rem .5rem;
+    border-radius: 5px;
+    line-height: 1.5;
+}
+
+div.sphinxsidebar ul li > a:hover { background: var(--surface); }
+div.sphinxsidebar ul li > a.current {
+    background: #eaf2f8;
+    color: #195b85;
+    font-weight: 650;
+}
+
+div.sphinxsidebar ul ul {
+    margin: .25rem 0 .5rem .75rem;
+    padding-left: .5rem;
+    border-left: 1px solid var(--divider);
+    list-style: none;
+}
+
+div.sphinxsidebar input {
+    min-height: 2.25rem;
+    border-color: #cbd5e1;
+    font-size: .8rem;
+}
+
+div.sphinxsidebar input[type=text] { border-radius: 5px 0 0 5px; }
+div.sphinxsidebar input[type=submit] {
+    border-radius: 0 5px 5px 0;
+    background: var(--surface);
+    color: #263548;
+    cursor: pointer;
+}
+
+/* On the cover the contents start alongside the logo. */
+.body h1 + a.image-reference:has(+ .toctree-wrapper) {
+    float: right;
+    margin: 0 0 1.5rem 2rem;
+}
+
+.body h1 + .image-reference:has(+ .toctree-wrapper) img { max-width: 7rem; }
+.toctree-wrapper { clear: both; }
+@media (min-width: 540px) {
+    .image-reference + .toctree-wrapper { clear: none; display: flow-root; }
+}
+
+div.body .toctree-wrapper > ul { margin: 0; list-style: none; }
+div.body .toctree-wrapper li { line-height: 1.35; }
+.toctree-wrapper .toctree-l1 { padding-block: .125rem; }
+.toctree-wrapper .toctree-l1 > a { font-weight: 650; }
+div.body .toctree-wrapper ul ul {
+    margin: 1px 0 2px 18px;
+    list-style: none;
+    font-size: .96rem;
+}
+
+div.body .toctree-wrapper a.reference { text-decoration: none; }
+div.body .toctree-wrapper a.reference:is(:hover, :focus-visible) { text-decoration: underline; }
+
+div.body p.changelog-version {
+    color: var(--heading);
+    margin: 1em 0 .25em;
+    font-weight: 650;
+    text-align: start;
+}
+
+div.body .changelog-version + ul { margin-top: 0; }
+:is(a, input):focus-visible { outline: 2px solid #195b85; outline-offset: 3px; }
+
+@media screen and (max-width: 800px) {
+    div.document,
+    .guide-footer-layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 2rem;
+        padding: 1.5rem;
+    }
+
+    .guide-footer-layout { padding-block: 0; }
+    .guide-footer-content { grid-area: 1 / 1; }
+    div.documentwrapper { grid-area: 2 / 1; }
+    div.sphinxsidebar {
+        position: static;
+        max-height: 280px;
+        padding: 0 0 1.5rem;
+        border-inline-end: 0;
+        border-bottom: 1px solid var(--divider);
+    }
+
+    div.body h1 { font-size: 1.8rem; }
+    div.body figure { padding: 1rem; }
+    div.body table.dependency-table { font-size: .8rem; }
+    div.body table.dependency-table :is(td, th) { padding: 7px; }
+}
+
+@media print {
+    div.document { display: block; padding: 0; }
+    div.body { max-width: none; }
+    div.sphinxsidebar, .guide-footer-layout { display: none; }
+    .body figure { break-inside: avoid; }
+}

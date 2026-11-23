@@ -1,0 +1,16 @@
+**
+!requirements.txt
+!sphinx_config.py
+!_ext/
+!_ext/svg_to_png.py
+!src/
+!src/**
+!userguide/
+userguide/*
+!userguide/conf.py
+!_latex/
+!_latex/**
+!_static/
+!_static/**
+!_templates/
+!_templates/**

@@ -1,18 +1,1 @@
-# to build various documenation:
-
-set -ex
-
-docbook2man stat_man.sgml -o ../../man
-docbook2man statgui_man.sgml -o ../../man
-docbook2man statview_man.sgml -o ../../man
-docbook2man statbench_man.sgml -o ../../man
-
-docbook2pdf stat_userguide.sgml -o ../userguide
-docbook2pdf stat_quickstart.sgml -o ../quickstart
-
-docbook2html stat_userguide.sgml -o ../userguide/html
-
-docbook2txt INSTALL.sgml -o ../../
-mv ../../INSTALL.txt ../../INSTALL
-docbook2txt LICENSE.sgml -o ../../
-mv ../../LICENSE.txt ../../LICENSE
+See ../README.md for documentation build instructions.
