@@ -38,8 +38,9 @@ Examples using the installed CLI:
     stat-gui-remote-cli --remote-login user@login-host --flux-allocation ALLOCATION_ID \\
         sample-job APPLICATION_JOB_ID --scheduler flux --samples 2
 
-JSON to stdout and saves response.json and DOT files in a unique client-side
-./stat_results/run-* directory. Use --output-dir DIR to select an exact directory.
+Sampling prints the local and remote result locations as JSON. Add -v for session details and graph paths,
+or -vv for the full response including DOT text. The client saves response.json and DOT files under
+./stat_results/run-* by default. Use --output-dir DIR to select an exact directory.
 """
 
 from __future__ import print_function
@@ -65,13 +66,38 @@ def build_client(args):
         remote_server_host=args.remote_server_host, flux_allocation=args.flux_allocation)
 
 
-def print_json(data, output_dir=None):
-    """Print JSON and optionally save the same response alongside the downloaded graphs."""
+def print_json(data, output_dir=None, stdout_data=None):
+    """Save the full response when requested, then print the selected JSON view."""
     text = json.dumps(data, indent=2, sort_keys=True) + "\n"
     if output_dir:
         with open(os.path.join(output_dir, "response.json"), "w") as stream:
             stream.write(text)
+    if stdout_data is not None and stdout_data is not data:
+        text = json.dumps(stdout_data, indent=2, sort_keys=True) + "\n"
     print(text, end="")
+
+
+def sampling_response_for_stdout(response, verbosity, server_host):
+    """Return result locations by default, session details at -v, or the full response at -vv."""
+    if verbosity == 0:
+        sample = response["samples"][0]
+        return {
+            "output_dir": response["output_dir"],
+            "remote_host": server_host,
+            "remote_output_dir": sample.get("out_dir") or os.path.dirname(sample["dot_filename"]),
+            "response_file": os.path.join(response["output_dir"], "response.json"),
+        }
+    if verbosity >= 2:
+        return response
+
+    def without_dot_text(graph):
+        return {key: value for key, value in graph.items() if key != "dot_text"}
+
+    details = dict(response)
+    details["samples"] = [without_dot_text(sample) for sample in response["samples"]]
+    if "merged" in response:
+        details["merged"] = without_dot_text(response["merged"])
+    return details
 
 
 def create_output_dir(requested_dir):
@@ -180,6 +206,9 @@ def main(argv=None):
         sample_parser.add_argument("--resume-between-samples", action="store_true",
                                    help="run for 1000 ms between snapshots unless --trace-frequency is set")
 
+        sample_parser.add_argument("-v", "--verbose", action="count", default=0,
+                                   help="print session details and graph paths (-vv includes DOT text)")
+
         # the DOT text comes back in JSON; saving it here writes only to the client filesystem.
         sample_parser.add_argument("--output-dir",
                                    help="client directory for DOT graphs and response.json (default: ./stat_results/run-*)")
@@ -257,7 +286,8 @@ def main(argv=None):
                     pass
                 raise
 
-            print_json(outputs, output_dir)
+            display = sampling_response_for_stdout(outputs, args.verbose, client.remote_health["hostname"])
+            print_json(outputs, output_dir, stdout_data=display)
     except StatRemoteClientError as exc:
         print_json({"ok": False, "error": exc.error}, output_dir)
         return 1

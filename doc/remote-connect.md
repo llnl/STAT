@@ -61,15 +61,29 @@ If an example below omits this option, add it before the subcommand. SSH setting
 
 ## Sampling options and output
 
-Sampling commands print the full JSON response to stdout and save the same content as `response.json` alongside the DOT
-graphs on the client machine. By default, each run creates a unique directory under `./stat_results/`; its absolute path
-appears in the response's `output_dir` field. Use `--output-dir ./my-samples` to write directly to a chosen directory instead.
-Files with the same names in an explicitly chosen directory are overwritten.
+After a successful sample, stdout reports the local output directory, server hostname and remote output directory as JSON.
+Open the local path in `response_file` for the full response, including DOT text. The client saves this file and the DOT graphs
+under `./stat_results/run-*` by default. Use `--output-dir ./my-samples` to choose a directory. Files with the same names
+in an explicitly chosen directory are overwritten.
 
-Sampling collects one snapshot by default and detaches before returning. The JSON response contains `attach`, `samples` and
-`detach` entries. Each sample's `local_dot` field gives the saved path. With more than one sample, the `merged` entry gives
-the accumulated 3D graph. Open these graphs in STATview. The status command only prints JSON to stdout.
-The sampling examples show excerpts from the JSON responses and the filenames saved by the client.
+For example, sampling an MPI ring job with the default options prints:
+
+```json
+{
+  "output_dir": "/home/user/stat_results/run-20261124-141708-byuqqlhv",
+  "remote_host": "compute-01",
+  "remote_output_dir": "/home/user/stat_results/mpi_ringtopo.0035",
+  "response_file": "/home/user/stat_results/run-20261124-141708-byuqqlhv/response.json"
+}
+```
+
+Add `-v` or `--verbose` to `sample-job` or `sample-process` to print session details and the remote (`dot_filename`)
+and local (`local_dot`) graph paths. Use `-vv` for the full JSON previously printed by default, including the DOT text.
+This output matches the saved `response.json`.
+
+Sampling collects one snapshot by default and detaches before returning. With multiple snapshots, the `merged` entry
+identifies the accumulated 3D graph. Open a downloaded graph with `stat-view /path/to/graph.dot`, or start `stat-gui`
+and choose **File > Open**. The examples below show excerpts from the saved `response.json`.
 
 Use `--with-threads` to include threads, or `--sample-type 'function only'` for function-only traces. By default, the
 application stays paused between snapshots. To let it run between snapshots, add `--trace-frequency MS` to a command
