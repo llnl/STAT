@@ -155,10 +155,11 @@ def _find_python_app_pid_under_wrapper(root_pid, descendants=None):
             continue
         values = process_tree.read_environ(pid)
 
+        # Slurm-native workers may have only SLURM_PROCID. When both exist, check both.
         try:
-            rank = int(values[b"RANK"])
+            rank = int(values.get(b"RANK", values.get(b"SLURM_PROCID")))
             slurm_rank = int(values.get(b"SLURM_PROCID", rank))
-        except (KeyError, TypeError, ValueError):
+        except (TypeError, ValueError):
             continue
 
         job = values.get(b"SLURM_JOB_ID") or values.get(b"SLURM_JOBID")
