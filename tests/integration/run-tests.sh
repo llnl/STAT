@@ -32,7 +32,7 @@ config=$(realpath "$config")
 source "$config"
 
 case "$EXECUTION" in
-  container|local|slurm) ;;
+  container|local|slurm|flux) ;;
   *) echo "Unknown EXECUTION: $EXECUTION" >&2; exit 2 ;;
 esac
 
@@ -63,7 +63,12 @@ for selection in "${selected[@]}"; do
     *) echo "Unknown test: $id" >&2; exit 2 ;;
   esac
 
-  if [ "$EXECUTION" = slurm ]; then
+  if [ "$EXECUTION" = flux ] && [ "$id" -gt 3 ]; then
+    echo "The Flux profile supports native tests 01–03 (got $selection)" >&2
+    exit 2
+  fi
+
+  if [[ "$EXECUTION" = slurm || "$EXECUTION" = flux ]]; then
     setting="TEST_RANKS_$id"
     if [ "${!setting}" -lt "$NODES" ]; then
       echo "Test $id needs at least $NODES ranks for $NODES nodes" >&2
