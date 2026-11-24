@@ -18,10 +18,86 @@ and then locally on laptop/desktop to attach to your application, collects stack
 - **Desktop CLI** — The same standalone package installs `stat-gui-remote-cli`. The command runs with Python and OpenSSH
   and can connect without native STAT libraries or a graphical display on the desktop.
 
-From the client machine, verify noninteractive SSH access with `ssh -o BatchMode=yes user@login-host true`.
-The clients use your OpenSSH configuration. To pass extra options, use `--ssh-option`, for example
-`--ssh-option=-p --ssh-option=2222`. In the examples, `--remote-prefix` points to the STAT installation on
-the host that runs the server.
+Start with your cluster's recommended SSH settings in the **desktop's** `~/.ssh/config`.
+Use a host entry to save the hostname, username, identity file, or jump host as needed.
+For example, if your login host uses SSH port 2222:
+
+```text
+Host my-cluster
+    HostName login.example.org
+    User myuser
+    Port 2222
+```
+
+Verify noninteractive access from the desktop with `ssh -o BatchMode=yes my-cluster true`, then use `--remote-login my-cluster`.
+SSH uses port 22 by default. For a one-off port override, `--ssh-option=-p --ssh-option=2222` passes `ssh -p 2222` to the desktop SSH client.
+In the examples, `--remote-prefix` points to the STAT installation on the host that runs the server.
+
+### SSH authentication from the login node to compute nodes
+
+Remote Connect uses SSH from your desktop to the login node.
+For a Slurm batch job, the `srun` launcher often runs on the batch compute node.
+STAT may then open a second SSH connection from the login node to find the launcher and start the server on that node.
+
+Your existing SSH configuration may already support both connections, either through agent forwarding or through authentication configured by the cluster.
+To check, connect from your desktop using the same SSH host alias you use with `--remote-login`.
+Replace `LOGIN_HOST` with that alias.
+
+```bash
+ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new LOGIN_HOST
+```
+
+From the login shell, list your running jobs and choose a compute node allocated to one of them.
+Replace `COMPUTE_NODE` with its hostname and run the second command while the job is still running.
+
+```bash
+squeue --me --states=RUNNING --format="%.18i %N"
+ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new COMPUTE_NODE hostname
+```
+
+If the second command prints the compute node's hostname, both SSH connections work without a prompt and you can proceed with Remote Connect.
+
+Some clusters require a short-lived SSH certificate.
+If the login succeeds but the compute node reports `Permission denied (publickey)`, check which credential the cluster accepts and whether the login node can use it.
+The Daint example below shows how to make a desktop-held credential available for the second connection.
+
+#### CSCS Alps example (Daint)
+
+CSCS requires multi-factor authentication (MFA) for account access and uses a signed SSH key for cluster login.
+On your desktop, renew the certificate and load the key into your SSH agent.
+With the filenames shown here, `ssh-add` also loads the matching `cscs-key-cert.pub` certificate.
+See the [CSCS SSH guide](https://docs.cscs.ch/access/ssh/).
+
+```bash
+cscs-key sign
+ssh-add -t 1d ~/.ssh/cscs-key
+```
+
+Add `ForwardAgent yes` to the existing Daint entry in your desktop's `~/.ssh/config`, alongside its user, identity, and jump-host settings.
+
+```text
+Host daint
+    ForwardAgent yes
+```
+
+Reconnect to Daint with `ssh daint`. While the connection is open, SSH on the login node can ask your desktop agent to sign the compute node's authentication request.
+The private key stays on your desktop.
+Run `ssh-add -L` on the login node to check that the forwarded agent offers the CSCS identity, then repeat the compute-node hostname check above.
+
+### SSH host-key confirmation
+
+Remote Connect defaults to `BatchMode=yes` and `StrictHostKeyChecking=accept-new` for desktop SSH,
+compute-node server startup, Slurm launcher discovery, and remote process and source queries.
+OpenSSH records a new host key in `known_hosts` without prompting and rejects changed keys.
+Explicit desktop `--ssh-option` values can override the desktop defaults. Authentication credentials are still required.
+
+Each SSH hop uses the host-key files on the machine that opens it.
+Desktop `--ssh-option` values apply to the desktop connection.
+The login node's separate SSH commands use their own settings.
+
+`Host key verification failed` points to host trust. `Permission denied (publickey)` points to user authentication.
+If STAT reports `Could not find a running launcher for job ...`, check the second hop while the batch job is still running.
+Restart the remote GUI connection after changing SSH settings or renewing the certificate, then refresh the job list.
 
 ## Standalone desktop GUI
 

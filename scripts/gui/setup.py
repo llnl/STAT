@@ -20,6 +20,7 @@ CLIENT_MODULES = (
     '__init__.py',
     'stat_client_cli.py',
     'stat_client_connection.py',
+    'stat_ssh.py',
     'stat_client_gui.py',
     'stat_client_slurm.py',
     'stat_server_slurm.py',

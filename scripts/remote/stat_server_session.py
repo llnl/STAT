@@ -422,8 +422,12 @@ class StatSession(object):
                     raise StatRemoteError("flux_attach_failed", str(exc), "attach", {"jobid": jobid}) from exc
                 remote_host, launcher_exe, pids = "localhost", "flux-job", [self.flux_helper.pid]
             else:
-                remote_host, launcher_exe, pids = attach_helper.jobid_to_hostname_pid(
-                    self.rm, jobid, self.remote_shell)
+                try:
+                    remote_host, launcher_exe, pids = attach_helper.jobid_to_hostname_pid(
+                        self.rm, jobid, self.remote_shell)
+                except RuntimeError as exc:
+                    raise StatRemoteError("launcher_lookup_failed", str(exc), "attach",
+                                          {"jobid": jobid}) from exc
 
             if remote_host is None or not pids:
                 raise StatRemoteError(
@@ -841,11 +845,12 @@ class StatSessionController(object):
         scheduler = _scheduler(params)
         if scheduler == "flux":
             raise StatRemoteError("unsupported_operation", "Use sessions.attach with a Flux job ID", "resolve")
-        remote_host, launcher_exe, pids = attach_helper.jobid_to_hostname_pid(
-            scheduler,
-            jobid,
-            "ssh",
-        )
+        try:
+            remote_host, launcher_exe, pids = attach_helper.jobid_to_hostname_pid(
+                scheduler, jobid, "ssh")
+        except RuntimeError as exc:
+            raise StatRemoteError("launcher_lookup_failed", str(exc), "resolve",
+                                  {"jobid": jobid}) from exc
 
         if remote_host is None or not pids:
             raise StatRemoteError(

@@ -245,22 +245,25 @@ class SlurmJobDiscovery(object):
                 processes = [process for process in parse_processes(output) if process['pid'] in pids]
                 if processes:
                     return host, processes
-            except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
-                failures.append('%s: %s' % (host, exc))
+            except RuntimeError as exc:
+                failures.append(str(exc))
 
-        message = (
-            'Could not find an attachable Slurm / distributed workload (srun or MPI) '
-            'for allocation %s. Start a Slurm / distributed job from within the '
-            'allocation, then refresh processes.' % (job_alias or jobid))
         if failures:
-            message += '\n\nDetails:\n' + '\n'.join(failures)
-        raise RuntimeError(message)
+            raise RuntimeError('\n'.join(failures))
+        return None, []
 
     def _probe_processes(self, command, host):
         """Return process output, treating a launcher that disappeared as an empty result."""
-        result = self.run(command, host)
+        message = 'Could not inspect launcher processes on %s' % host
+        try:
+            result = self.run(command, host)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            detail = ('SSH timed out after %s seconds' % exc.timeout
+                      if isinstance(exc, subprocess.TimeoutExpired) else str(exc))
+            raise RuntimeError('%s: %s' % (message, detail)) from exc
         if result.returncode == 1:
             return ''
         if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or 'Could not inspect launcher processes')
+            detail = result.stderr.strip() or 'command exited with status %s' % result.returncode
+            raise RuntimeError('%s: %s' % (message, detail))
         return result.stdout

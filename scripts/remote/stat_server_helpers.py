@@ -18,6 +18,7 @@ import socket
 import subprocess
 
 import attach_helper
+from remote.stat_ssh import remote_shell_argv
 
 
 # cap raw file content at 4 MiB when copying source from the container (future remote GUI support).
@@ -79,8 +80,8 @@ def jobid_to_hostname_pid(rm, jobid, remoteshell):
     """Resolve a job to its launcher host, executable and candidate PIDs.
 
     Slurm uses the discovery module; other schedulers reuse STAT's existing
-    resolver. Return an empty result when Slurm discovery fails or the job
-    has finished.
+    resolver. Return an empty result when no launcher is found.
+    Forward errors from Slurm and launcher process queries.
     """
     pids = []
     if rm == None or rm.lower() == 'auto':
@@ -93,15 +94,17 @@ def jobid_to_hostname_pid(rm, jobid, remoteshell):
         from remote.stat_server_slurm import SlurmJobDiscovery
 
         def run_command(command, host=None):
-            argv = ["bash", "-c", command] if host is None else [remoteshell, host, command]
+            argv = (["bash", "-c", command] if host is None else
+                    remote_shell_argv(host, command, executable=remoteshell))
             return subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                   universal_newlines=True, check=False, timeout=30)
 
         try:
             resolved = SlurmJobDiscovery(run_command).resolve(jobid)
-        except (RuntimeError, OSError, subprocess.TimeoutExpired):
-            # a job may finish between listing and launcher resolution.
-            return None, None, []
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Slurm launcher lookup timed out after %s seconds" % exc.timeout) from exc
+        except OSError as exc:
+            raise RuntimeError(str(exc)) from exc
         if not resolved['pids']:
             return None, None, []
         return resolved['remote_host'], resolved['launcher_exe'], resolved['pids']
@@ -234,7 +237,8 @@ def _remote_command(remoteshell, remotehost, command, timeout=None):
     """Run on the server for local hostnames, otherwise through the remote shell."""
     if remotehost in ("localhost", socket.gethostname(), socket.getfqdn()):
         return _run_command(["sh", "-c", command], timeout=timeout)
-    return _run_command([remoteshell, remotehost, command], timeout=timeout)
+    return _run_command(
+        remote_shell_argv(remotehost, command, executable=remoteshell), timeout=timeout)
 
 
 def _quote(value):

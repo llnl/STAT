@@ -53,6 +53,9 @@ def resolve_on_login(client, jobid, selected_launcher=None):
 
     job = SlurmJobDiscovery(client._run_ssh).resolve(jobid)
     launcher = job['remote_host']
+    if launcher is None:
+        raise RuntimeError('Could not find a running launcher for job %s. '
+                           'Start a Slurm workload, then refresh processes.' % jobid)
     if selected_launcher is not None:
         check_launcher(job, jobid, *selected_launcher)
 

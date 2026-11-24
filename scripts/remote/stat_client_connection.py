@@ -42,6 +42,8 @@ import sys
 import threading
 import time
 
+from remote.stat_ssh import remote_shell_argv
+
 
 # review and adjust these timeouts based on testing at scale (TODO).
 
@@ -120,24 +122,23 @@ class StatRemoteClient(object):
         """Wrap a command in a second SSH hop when the server runs elsewhere."""
         if remote_server_host is None:
             return command
-        return ("exec ssh -T -o BatchMode=yes "
-                "-o GSSAPIDelegateCredentials=yes -- %s %s") % (
-            shlex.quote(remote_server_host), shlex.quote(command))
+        argv = remote_shell_argv(
+            remote_server_host, command,
+            options=["-o", "GSSAPIDelegateCredentials=yes"])
+        return "exec " + " ".join(shlex.quote(arg) for arg in argv)
 
     def _rebuild_ssh_argv(self):
         """Build the persistent server command using the selected SSH route."""
-        self.argv = ["ssh", "-T"]
-        self.argv.extend(self.ssh_options)
-        self.argv.extend(["-o", "BatchMode=yes", self.remote_login,
-                          self._server_command(
-                              self.remote_command, self.remote_server_host)])
+        self.argv = remote_shell_argv(
+            self.remote_login,
+            self._server_command(self.remote_command, self.remote_server_host),
+            options=self.ssh_options)
 
     def _run_ssh(self, command, server_host=None, timeout=SSH_OPERATION_TIMEOUT_SECONDS):
         """Run a bounded setup probe independently of the persistent JSON connection."""
-        argv = ["ssh", "-T"]
-        argv.extend(self.ssh_options)
-        argv.extend(["-o", "BatchMode=yes", self.remote_login,
-                     self._server_command(command, server_host)])
+        argv = remote_shell_argv(
+            self.remote_login, self._server_command(command, server_host),
+            options=self.ssh_options)
         return subprocess.run(
             argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             universal_newlines=True, check=False, timeout=timeout)
