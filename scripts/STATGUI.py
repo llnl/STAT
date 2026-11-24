@@ -29,6 +29,7 @@ __version__ = "%d.%d.%d" %(__version_major__, __version_minor__, __version_revis
 
 import STAThelper
 from STAThelper import var_spec_to_string, get_task_list, get_proctab, HAVE_PYGMENTS, exec_and_exit
+
 HAVE_PANGO = True
 if HAVE_PYGMENTS:
     import pygments
@@ -42,6 +43,7 @@ if HAVE_PYGMENTS:
         from gi.repository import Pango
     except:
         HAVE_PANGO = False
+
 import STATview
 from STATview import STATDotWindow, stat_wait_dialog, show_error_dialog, search_paths, STAT_LOGO, run_gtk_main_loop
 
@@ -55,13 +57,22 @@ if HAVE_DLOPEN is True:
     new_dlflags = ctypes.RTLD_GLOBAL | dlflags
     sys.setdlopenflags(new_dlflags)
 
-from STAT import STAT_FrontEnd, intArray, STAT_LOG_NONE, STAT_LOG_FE, STAT_LOG_BE, STAT_LOG_CP, STAT_LOG_MRN, STAT_LOG_SW, STAT_LOG_SWERR, STAT_OK, STAT_APPLICATION_EXITED, STAT_VERBOSE_ERROR, STAT_VERBOSE_FULL, STAT_VERBOSE_STDOUT, STAT_TOPOLOGY_AUTO, STAT_TOPOLOGY_DEPTH, STAT_TOPOLOGY_FANOUT, STAT_TOPOLOGY_USER, STAT_PENDING_ACK, STAT_LAUNCH, STAT_ATTACH, STAT_SERIAL_ATTACH, STAT_GDB_ATTACH, STAT_SERIAL_GDB_ATTACH, STAT_SAMPLE_FUNCTION_ONLY, STAT_SAMPLE_LINE, STAT_SAMPLE_PC, STAT_SAMPLE_COUNT_REP, STAT_SAMPLE_THREADS, STAT_SAMPLE_CLEAR_ON_SAMPLE, STAT_SAMPLE_PYTHON, STAT_SAMPLE_MODULE_OFFSET, STAT_CP_NONE, STAT_CP_SHAREAPPNODES, STAT_CP_EXCLUSIVE
-from STAT import (
-    STAT_PYSTACK_ATTACH, STAT_SERIAL_PYSTACK_ATTACH,
-    STAT_PYSTACK_BACKEND_ENABLED,
-    STAT_DAEMON_BACKEND_NATIVE, STAT_DAEMON_BACKEND_GDB, STAT_DAEMON_BACKEND_PYSTACK,
-    STAT_SAMPLE_PYSTACK, STAT_SAMPLE_CHILDREN,
-)
+try:
+    import STAT
+except ImportError:
+    # the standalone desktop client gets its backend capabilities from the server.
+    HAVE_NATIVE_STAT = False
+    STAT_OK = 0
+    STAT_PYSTACK_BACKEND_ENABLED = False
+else:
+    HAVE_NATIVE_STAT = True
+    from STAT import STAT_FrontEnd, intArray, STAT_LOG_NONE, STAT_LOG_FE, STAT_LOG_BE, STAT_LOG_CP, STAT_LOG_MRN, STAT_LOG_SW, STAT_LOG_SWERR, STAT_OK, STAT_APPLICATION_EXITED, STAT_VERBOSE_ERROR, STAT_VERBOSE_FULL, STAT_VERBOSE_STDOUT, STAT_TOPOLOGY_AUTO, STAT_TOPOLOGY_DEPTH, STAT_TOPOLOGY_FANOUT, STAT_TOPOLOGY_USER, STAT_PENDING_ACK, STAT_LAUNCH, STAT_ATTACH, STAT_SERIAL_ATTACH, STAT_GDB_ATTACH, STAT_SERIAL_GDB_ATTACH, STAT_SAMPLE_FUNCTION_ONLY, STAT_SAMPLE_LINE, STAT_SAMPLE_PC, STAT_SAMPLE_COUNT_REP, STAT_SAMPLE_THREADS, STAT_SAMPLE_CLEAR_ON_SAMPLE, STAT_SAMPLE_PYTHON, STAT_SAMPLE_MODULE_OFFSET, STAT_CP_NONE, STAT_CP_SHAREAPPNODES, STAT_CP_EXCLUSIVE
+    from STAT import (
+        STAT_PYSTACK_ATTACH, STAT_SERIAL_PYSTACK_ATTACH,
+        STAT_PYSTACK_BACKEND_ENABLED,
+        STAT_DAEMON_BACKEND_NATIVE, STAT_DAEMON_BACKEND_GDB, STAT_DAEMON_BACKEND_PYSTACK,
+        STAT_SAMPLE_PYSTACK, STAT_SAMPLE_CHILDREN,
+    )
 
 HAVE_OPENMP_SUPPORT = True
 try:
@@ -164,6 +175,8 @@ if has_gtk == False:
 class STATGUI(STATDotWindow):
     """The STATGUI window adds STAT operations to the STATview window."""
 
+    supports_cuda_quick = HAVE_GDB_SUPPORT
+
     ui2 = ''
     ui2 += '<ui>\n'
     ui2 += '    <toolbar name="STAT_Actions">\n'
@@ -188,7 +201,9 @@ class STATGUI(STATDotWindow):
                 os.mkdir('%s/.STAT' % os.environ['HOME'])
             except:
                 pass
-        self.STAT = STAT_FrontEnd()
+        remote_requested = getattr(args, 'remote_login', None) or not HAVE_NATIVE_STAT
+        self.STAT = STAT_FrontEnd() if not remote_requested else None
+        self.remote_args = args
         self.properties_window = None
         self.proctab_file_path = None
         self.proctab = None
@@ -236,8 +251,8 @@ class STATGUI(STATDotWindow):
                    'Check Node Access':                False,
                    'CP Policy':                        'share app nodes',
                    'Daemons per Node':                 1,
-                   'Tool Daemon Path':                 self.STAT.getToolDaemonExe(),
-                   'Filter Path':                      self.STAT.getFilterPath(),
+                   'Tool Daemon Path':                 self.STAT.getToolDaemonExe() if self.STAT else '',
+                   'Filter Path':                      self.STAT.getFilterPath() if self.STAT else '',
                    'Job Launcher':                     'mpirun|srun|sattach|orterun|aprun|runjob|wreckrun|mpiexec|jsrun|job',
                    'Job ID':                           '',
                    'Filter Ranks':                     '',
@@ -295,7 +310,7 @@ class STATGUI(STATDotWindow):
             self.options['Debug Backends'] = False
 
         # Check for site default options then for user default options
-        site_options_path = '%s/etc/STAT/STAT.conf' % self.STAT.getInstallPrefix()
+        site_options_path = '%s/etc/STAT/STAT.conf' % self.STAT.getInstallPrefix() if self.STAT else ''
         user_options_path = '%s/.STATrc' % (os.environ.get('HOME'))
         for path in [site_options_path, user_options_path]:
             if os.path.exists(path):
@@ -347,6 +362,11 @@ class STATGUI(STATDotWindow):
                     traceback.print_exc()
                     sys.stderr.write('%s\nfailed to process preferences file %s\n' % (repr(e), path))
                     continue
+
+        if remote_requested:
+            # Saved desktop installation paths do not describe the server.
+            for option in ('Tool Daemon Path', 'Filter Path', 'Log Dir'):
+                self.options[option] = ''
 
         if args is not None:
             if args.withmoduleoffset is True:
@@ -448,7 +468,7 @@ host[1-10,12,15-20];otherhost[30]
                 self.options['PID'] = int(args.attach.split(':')[-1])
                 if args.attach.find(':') != -1:
                     self.options['Remote Host'] = args.attach.split(':')[0]
-                stat_wait_dialog.show_wait_dialog_and_run(self.attach_cb, (None, False, False, STAT_ATTACH), self.attach_task_list)
+                stat_wait_dialog.show_wait_dialog_and_run(self.attach_cb, (None, False, False, None), self.attach_task_list)
                 return
             elif args.serial is not None:
                 self.serial_attach = True
@@ -457,7 +477,8 @@ host[1-10,12,15-20];otherhost[30]
             elif args.create is not None:
                 stat_wait_dialog.show_wait_dialog_and_run(self.launch_application_cb, (None, None, args.create), self.attach_task_list)
                 return
-        self.on_attach(None)
+        if not remote_requested or args.remote_login:
+            self.on_attach(None)
 
     def search_hosts(self, text, match_case_check_box):
         """Callback to handle activation of focus task text entry."""
@@ -641,8 +662,10 @@ host[1-10,12,15-20];otherhost[30]
 
     def pid_toggle_cb(self, action, pid, command):
         """A callback to modify the PID option."""
-        self.options['PID'] = pid
-        self.options['Launcher Exe'] = command
+        # selecting a launcher also toggles the previous launcher off; only save the active PID and command.
+        if action.get_active():
+            self.options['PID'] = pid
+            self.options['Launcher Exe'] = command
 
     def serial_pid_toggle_cb(self, action, pid, command):
         """A callback to modify the PID option."""
@@ -839,11 +862,13 @@ host[1-10,12,15-20];otherhost[30]
                             continue
                 process_list.append((int(line.split()[pid_index]), cmd_line))
 
-        started = False
+        self.pack_process_list(vbox, process_list, is_parallel)
+
+    def pack_process_list(self, vbox, process_list, is_parallel, first_radio_button=None):
+        # the remote Slurm Attach dialog passes a hidden button so no matching launcher is selected by default.
         for (pid, cmd_line) in process_list:
             text = '% 5d %s' %(pid, cmd_line)
-            if started is False:
-                started = True
+            if first_radio_button is None:
                 first_radio_button = gtk_wrap_new_with_label_from_widget(None, text)
                 first_radio_button.set_active(True)
                 radio_button = first_radio_button
@@ -1072,12 +1097,19 @@ host[1-10,12,15-20];otherhost[30]
             self.STAT = None
         if self.STAT is None:
             self.STAT = STAT_FrontEnd()
+        return self.show_attach_dialog()
+
+    def show_attach_dialog(self, remote=False):
         self.options['PID'] = None
         self.options['Launcher Exe'] = ''
         self.options['Serial PID'] = None
         self.options['Serial Exe'] = ''
         attach_dialog = gtk.Dialog('Attach', self)
         attach_dialog.set_default_size(400, 400)
+        if remote:
+            attach_dialog.set_modal(True)
+            # keep the dialog alive while a pending server request can still update it.
+            attach_dialog.connect("delete-event", lambda *args: self.remote_busy)
         notebook = gtk.Notebook()
         notebook.set_tab_pos(gtk.POS_TOP)
         notebook.set_scrollable(False)
@@ -1091,22 +1123,30 @@ host[1-10,12,15-20];otherhost[30]
         self.jobid_entry = self.pack_entry_and_button(self.options['Job ID'], self.on_update_job_id, process_frame, attach_dialog, "Search for Job", hbox, True, True, 0)
         hbox.pack_start(gtk.VSeparator(), False, False, 5)
         self.pack_combo_box(hbox, 'Resource Manager')
-        self.rm_expander.add(hbox)
+        # to add a Running Jobs row above the Job ID field.
+        rm_box = gtk.VBox()
+        rm_box.pack_start(hbox, False, False, 0)
+        self.rm_expander.add(rm_box)
         vbox.pack_start(self.rm_expander, False, False, 0)
 
         self.hn_expander = gtk.Expander(label="Search for job by hostname")
         hbox = gtk.HBox()
         self.rh_entry = self.pack_entry_and_button(self.options['Remote Host'], self.on_update_remote_host, process_frame, attach_dialog, "Search Remote Host", hbox)
         self.hn_expander.add(hbox)
-        self.hn_expander.set_expanded(True)
+        self.hn_expander.set_expanded(not remote)
+        self.hn_expander.set_sensitive(not remote)
+        self.rm_expander.set_expanded(remote)
         vbox.pack_start(self.hn_expander, False, False, 0)
 
-        self.rm_expander.connect("activate", lambda w: self.hn_expander.set_expanded(self.rm_expander.get_expanded()))
-        self.hn_expander.connect("activate", lambda w: self.rm_expander.set_expanded(self.hn_expander.get_expanded()))
+        # only local attach switches between job and hostname searches; remote attach disables hostname search.
+        if not remote:
+            self.rm_expander.connect("activate", lambda w: self.hn_expander.set_expanded(self.rm_expander.get_expanded()))
+            self.hn_expander.connect("activate", lambda w: self.rm_expander.set_expanded(self.hn_expander.get_expanded()))
 
         vbox.pack_start(gtk.HSeparator(), False, False, 0)
         hbox = gtk.HBox()
         self.pack_combo_box(hbox, 'Remote Host Shell')
+        hbox.set_sensitive(not remote)
         vbox.pack_start(hbox, False, False, 0)
         vbox.pack_start(process_frame, True, True, 0)
         self.pack_check_button(vbox, 'Filter Full Command Line', False, False, 5)
@@ -1125,7 +1165,12 @@ host[1-10,12,15-20];otherhost[30]
         button.connect("clicked", lambda w: self.on_cancel_attach(w, attach_dialog))
         hbox.pack_start(button, False, False, 0)
         button = gtk.Button("Attach")
-        button.connect("clicked", lambda w: stat_wait_dialog.show_wait_dialog_and_run(self.attach_cb, (attach_dialog, False, False, STAT_ATTACH), self.attach_task_list, attach_dialog))
+        # the remote callback shows progress for SSH requests, while local attach uses the wait dialog.
+        if remote:
+            attach_button = button
+            button.connect("clicked", lambda w: self.attach_cb(attach_dialog, False, False))
+        else:
+            button.connect("clicked", lambda w: stat_wait_dialog.show_wait_dialog_and_run(self.attach_cb, (attach_dialog, False, False, STAT_ATTACH), self.attach_task_list, attach_dialog))
         hbox.pack_start(button, True, True, 0)
         vbox.pack_start(hbox, False, False, 0)
         label = gtk.Label('Attach')
@@ -1148,6 +1193,7 @@ host[1-10,12,15-20];otherhost[30]
         button.connect("clicked", lambda w: stat_wait_dialog.show_wait_dialog_and_run(self.launch_application_cb, (entry, attach_dialog), self.attach_task_list, attach_dialog))
         hbox.pack_start(button, False, False, 0)
         vbox.pack_end(hbox, False, False, 0)
+        vbox.set_sensitive(not remote)
         label = gtk.Label('Launch')
         notebook.append_page(vbox, label)
 
@@ -1172,6 +1218,10 @@ host[1-10,12,15-20];otherhost[30]
         hbox.pack_start(button, False, False, 10)
         button = gtk.Button("Add Process to Attach List")
         hbox.pack_start(button, True, True, 10)
+        if remote:
+            # Remote serial attach accepts explicit host:PID entries.
+            for child in vbox.get_children() + [hbox]:
+                child.set_sensitive(False)
         self.serial_process_list_entry = gtk.Entry()
         self.serial_process_list_entry.set_max_length(8192)
         self.serial_process_list_entry.set_text(self.options['Serial Process List'])
@@ -1196,7 +1246,7 @@ host[1-10,12,15-20];otherhost[30]
         notebook.append_page(vbox, label)
 
         # DySect options
-        if HAVE_DYSECT:
+        if HAVE_DYSECT and not remote:
             vbox = gtk.VBox()
             frame = gtk.Frame(label='DySectAPI Options')
             dysect_vbox = gtk.VBox()
@@ -1253,10 +1303,11 @@ host[1-10,12,15-20];otherhost[30]
         # misc options
         vbox = gtk.VBox()
         frame = gtk.Frame(label='Tool Paths')
+        frame.set_sensitive(not remote)
         vbox2 = gtk.VBox()
         self.pack_string_option(vbox2, 'Tool Daemon Path', attach_dialog)
         self.pack_string_option(vbox2, 'Filter Path', attach_dialog)
-        if HAVE_GDB_SUPPORT:
+        if 'gdb' in self.types['Sampling Backend']:
             self.gdb_path_controls = gtk.VBox()
             self.pack_string_option(self.gdb_path_controls, 'GDB Path', attach_dialog)
             self.gdb_path_controls.set_sensitive(self.get_sampling_backend() == 'gdb')
@@ -1292,11 +1343,17 @@ host[1-10,12,15-20];otherhost[30]
         label = gtk.Label('Advanced')
         notebook.append_page(vbox, label)
 
-        self.on_update_process_listing(None, process_frame, attach_dialog, self.filter_entry)
-        self.on_update_serial_process_listing(None, serial_process_frame, attach_dialog, self.serial_filter_entry)
         attach_dialog.vbox.pack_start(notebook, True, True, 0)
         attach_dialog.show_all()
+        # remote attach starts with a scheduler job, while local attach lists launcher and serial processes.
+        if remote:
+            self.setup_job_picker(rm_box, process_frame, attach_dialog, attach_button)
+        else:
+            self.on_update_process_listing(None, process_frame, attach_dialog, self.filter_entry)
+            self.on_update_serial_process_listing(None, serial_process_frame, attach_dialog, self.serial_filter_entry)
         attach_dialog.run()
+        if remote:
+            attach_dialog.destroy()
         self.sw = None
         self.serial_sw = None
         return True
@@ -1390,7 +1447,19 @@ host[1-10,12,15-20];otherhost[30]
             self.STAT.dysectStop()
         self.on_detach(button)
 
-    def attach_cb(self, attach_dialog, launch, serial, application_option=STAT_ATTACH):
+    def update_attach_options(self):
+        """Read topology and logging choices from the Attach notebook when present."""
+        # both attach paths need the current widget values before configuring STAT locally or over SSH.
+        try:
+            self.options['Topology Type'] = self.types['Topology Type'][self.combo_boxes['Topology Type'].get_active()]
+            self.options['CP Policy'] = self.types['CP Policy'][self.combo_boxes['CP Policy'].get_active()]
+            self.options['Verbosity Type'] = self.types['Verbosity Type'][self.combo_boxes['Verbosity Type'].get_active()]
+            self.options['Communication Processes per Node'] = int(self.spinners['Communication Processes per Node'].get_value())
+            self.options['Daemons per Node'] = int(self.spinners['Daemons per Node'].get_value())
+        except (KeyError, AttributeError):
+            pass
+
+    def attach_cb(self, attach_dialog, launch, serial, application_option=None):
         """Callback to attach to a job and gather a stack trace."""
         self.enforce_stack_sample_option_compatibility()
         if self.options['Use PyStack'] and not STAT_PYSTACK_BACKEND_ENABLED:
@@ -1405,14 +1474,7 @@ host[1-10,12,15-20];otherhost[30]
             run_gtk_main_loop()
             attach_dialog.hide()
         stat_wait_dialog.update_progress_bar(0.01)
-        try:
-            self.options['Topology Type'] = self.types['Topology Type'][self.combo_boxes['Topology Type'].get_active()]
-            self.options['CP Policy'] = self.types['CP Policy'][self.combo_boxes['CP Policy'].get_active()]
-            self.options['Verbosity Type'] = self.types['Verbosity Type'][self.combo_boxes['Verbosity Type'].get_active()]
-            self.options['Communication Processes per Node'] = int(self.spinners['Communication Processes per Node'].get_value())
-            self.options['Daemons per Node'] = int(self.spinners['Daemons per Node'].get_value())
-        except Exception as e:
-            pass
+        self.update_attach_options()
         if self.options['Check Node Access'] == True:
             os.environ['STAT_CHECK_NODE_ACCESS'] = '1'
         if self.STAT is None:
@@ -1422,6 +1484,9 @@ host[1-10,12,15-20];otherhost[30]
                 show_error_dialog('No job selected.  Please select a valid\njob launcher process to attach to.\n', self)
                 return False
 
+        # resolve the native default here so the standalone client can import this module without STAT.
+        if application_option is None:
+            application_option = STAT_ATTACH
         self.STAT.setToolDaemonExe(self.options['Tool Daemon Path'])
         self.STAT.setFilterPath(self.options['Filter Path'])
         os.environ['STAT_GDB'] = self.options['GDB Path']
@@ -1573,7 +1638,7 @@ host[1-10,12,15-20];otherhost[30]
             self.set_action_sensitivity('paused')
             stat_wait_dialog.update_progress_bar(1.0)
 
-    def on_detach(self, widget, stop_list=intArray(0), stop_list_len=0):
+    def on_detach(self, widget, stop_list=None, stop_list_len=0):
         """Determine the process state and detach from the current job."""
         self.proctab_file_path = None
         self.proctab = None
@@ -1588,6 +1653,8 @@ host[1-10,12,15-20];otherhost[30]
         self.var_spec = []
         self.show_all()
 
+        if stop_list is None:
+            stop_list = intArray(0)
         ret = self.STAT.detachApplication(stop_list, stop_list_len, False)
         if ret != STAT_OK:
             show_error_dialog('Failed to detach from application:\n%s' % self.STAT.getLastErrorMessage(), self)
@@ -2516,7 +2583,7 @@ host[1-10,12,15-20];otherhost[30]
         """Return the backend selected by the existing CLI and saved preference."""
         if self.options['Use PyStack']:
             return 'pystack'
-        return 'gdb' if HAVE_GDB_SUPPORT and self.options['GDB BE'] else 'dyninst'
+        return 'gdb' if 'gdb' in self.types['Sampling Backend'] and self.options['GDB BE'] else 'dyninst'
 
     def valid_sample_types_for_backend(self):
         """Return the frame formats produced by the selected sampler."""
@@ -2660,7 +2727,7 @@ host[1-10,12,15-20];otherhost[30]
         self.pystack_frames = None
         self.gdb_path_controls = None
 
-        if STAT_PYSTACK_BACKEND_ENABLED:
+        if 'pystack' in self.types['Sampling Backend']:
             self.add_pystack_frame_selector(vbox2)
 
         # Choose whether to sample threads and children.
@@ -2675,7 +2742,7 @@ host[1-10,12,15-20];otherhost[30]
         # Choose whether to sample OpenMP and with CUDA Quick option.
         if HAVE_OPENMP_SUPPORT:
             self.add_sampling_checkbox(vbox2, 'With OpenMP')
-        if HAVE_GDB_SUPPORT:
+        if self.supports_cuda_quick:
             self.add_sampling_checkbox(vbox2, 'With CUDA Quick')
         self.add_sampling_checkbox(vbox2, 'Gather Python Traces')
 
@@ -2721,7 +2788,18 @@ host[1-10,12,15-20];otherhost[30]
 
 def STATGUI_main(args):
     """The STATGUI main."""
-    window = STATGUI(args)
+    if getattr(args, 'remote_login', None) or not HAVE_NATIVE_STAT:
+        from remote.stat_client_gui import RemoteGUI
+
+        # put RemoteGUI first so its SSH callbacks handle actions from the shared widgets.
+        class STATRemoteGUI(RemoteGUI, STATGUI):
+            pass
+
+        window = STATRemoteGUI(args)
+    else:
+        if (args.gdb or args.cudaquick) and not HAVE_GDB_SUPPORT:
+            raise SystemExit('GDB support was not enabled in this STAT installation.')
+        window = STATGUI(args)
     STATview.window = window
     window.connect('destroy', window.on_destroy)
     #gtk.gdk.threads_init()

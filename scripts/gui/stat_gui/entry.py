@@ -1,4 +1,4 @@
-"""Launch the native GUI when available, otherwise the standalone graph viewer.
+"""Launch the STAT GUI with native or remote collection.
 
 Prepare GTK resources before importing viewer modules. Offline help and version
 reporting need neither GTK nor a display. Console commands are registered in
@@ -8,7 +8,6 @@ pyproject.toml.
 import argparse
 import atexit
 import glob
-import importlib.util
 from importlib.metadata import version
 import os
 import runpy
@@ -109,51 +108,29 @@ def _set_application_identity():
         pass
 
 
-def _warn_missing_stat_core():
-    import gi
-
-    gi.require_version('Gtk', '3.0')
-    from gi.repository import Gtk
-
-    dialog = Gtk.MessageDialog(
-        modal=True,
-        message_type=Gtk.MessageType.WARNING,
-        buttons=Gtk.ButtonsType.OK,
-        text=(
-            'This is a standalone STAT GUI installation without Remote Attach support. '
-            'STATview will open so you can view saved call graphs.'
-        ),
-    )
-    dialog.set_title('STAT GUI')
-    dialog.run()
-    dialog.destroy()
-
-
 def _main(command):
-    """Use the graph viewer when native collection is unavailable."""
+    """Prepare graphics resources and dispatch to the GUI or viewer."""
 
     # Version reporting needs neither GTK initialization nor a display.
     if sys.argv[1:] == ['--version']:
         print('STAT-GUI %s' % version('stat-gui'))
         return
 
-    # TODO: Use the remote attach API once it is implemented.
-    missing_stat_core = command == 'gui' and importlib.util.find_spec('STAT') is None
-    if missing_stat_core:
-        command = 'view'
     if command == 'view':
         parser = argparse.ArgumentParser(
             description='View STAT call graphs without a native STAT installation.')
         parser.add_argument('files', nargs='*', help='optional list of STAT .dot files')
         args = parser.parse_args()
 
+    elif '--help' in sys.argv[1:] or '-h' in sys.argv[1:]:
+        from remote.stat_client_gui import gui_help
+        gui_help()
+        return
+
     # Finish environment preparation before importing GTK-dependent modules.
     _configure_gsettings_schema_dir()
     _configure_gdk_pixbuf_loaders()
     _set_application_identity()
-
-    if missing_stat_core:
-        _warn_missing_stat_core()
 
     # Dispatch to the existing viewer or native GUI implementation.
     if command == 'view':
@@ -167,7 +144,7 @@ def _main(command):
 
 
 def main():
-    """Open the native GUI, or the offline viewer without native bindings."""
+    """Open the GUI with local bindings or remote SSH collection."""
     _main('gui')
 
 

@@ -121,7 +121,7 @@ class StatRemoteClient(object):
         if remote_server_host is None:
             return command
         return ("exec ssh -T -o BatchMode=yes "
-                "-o GSSAPIDelegateCredentials=yes %s %s") % (
+                "-o GSSAPIDelegateCredentials=yes -- %s %s") % (
             shlex.quote(remote_server_host), shlex.quote(command))
 
     def _rebuild_ssh_argv(self):

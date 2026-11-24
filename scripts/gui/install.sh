@@ -106,7 +106,7 @@ pixi run stat-gui --help
 printf 'STAT GUI installed in %s\n' "$location"
 printf '\nIf Pixi is not on PATH in a new terminal:\n'
 printf '  export PATH="%s:$PATH"\n' "$(dirname "$(command -v pixi)")"
-printf '\nTo open the offline GUI:\n'
+printf '\nTo open the remote GUI:\n'
 printf '  pixi run --manifest-path "%s/pixi.toml" stat-gui\n' "$pixi_dir"
 printf '\nTo open a saved graph:\n'
 printf '  pixi run --manifest-path "%s/pixi.toml" stat-view /path/to/graph.dot\n' "$pixi_dir"

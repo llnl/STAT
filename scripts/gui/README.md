@@ -1,7 +1,8 @@
 # Standalone STAT GUI
 
-The standalone Python GUI can be installed without building STAT, Dyninst, LaunchMON, MRNet or GraphLib. It provides the
-basis for remote GUI functionality planned for future changes.
+The standalone Python GUI can be installed without building STAT, Dyninst, LaunchMON, MRNet or GraphLib.
+Use it to view saved call graphs or [connect to a STAT server over SSH](../../doc/remote-connect.md).
+The package also installs `stat-gui-remote-cli` for remote sampling from a terminal without a graphical display.
 
 ## Installing the GUI and its dependencies
 
@@ -88,17 +89,19 @@ Homebrew must be on `PATH` so the viewer can find Graphviz's `dot`. Use the Home
 `pygobject3` bindings; a different Python installation or minor version may fail to import `gi` or `cairo`.
 
 
-## Installing from a Git repository
+## Installing with pip from GitHub
 
-Pip can clone a repository and install only this package subdirectory:
+As an alternative to `python -m pip install ./scripts/gui` from a local checkout, install directly from LLNL's
+`develop` branch. Run this in a Python environment with the graphics dependencies listed above and Git on `PATH`.
 
 ```sh
-python -m pip install "git+https://github.com/LLNL/STAT.git@develop#subdirectory=scripts/gui"
+python -m pip install 'git+https://github.com/LLNL/STAT.git@develop#subdirectory=scripts/gui'
+
+# Or replace <commit-id> with a full Git commit SHA to install that revision
+python -m pip install 'git+https://github.com/LLNL/STAT.git@<commit-id>#subdirectory=scripts/gui'
 ```
 
-The example uses `LLNL/STAT` and the `develop` branch. These can be replaced with another repository and branch containing
-this package. Installation from a Git URL requires Git and the same graphics prerequisites as a local pip installation.
-
+You can substitute another repository and branch that contain the standalone GUI package.
 
 ## Opening saved call graphs
 
@@ -107,5 +110,3 @@ stat-view /path/to/saved.2D.dot
 stat-gui
 stat-gui --version
 ```
-
-SSH GUI/server connections and remote functionality are not included in this version.

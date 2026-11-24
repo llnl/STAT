@@ -38,11 +38,6 @@ if HAVE_DLOPEN is True:
     new_dlflags = ctypes.RTLD_GLOBAL | dlflags
     sys.setdlopenflags(new_dlflags)
 
-HAVE_GDB_SUPPORT = True
-try:
-    from STAT import STAT_SAMPLE_CUDA_QUICK
-except:
-    HAVE_GDB_SUPPORT = False
 HAVE_STATVIEW = True
 import_exception = None
 try:
@@ -52,8 +47,7 @@ except Exception as e:
     import_exception = e
 HAVE_STATGUI = True
 try:
-    from STAT import STAT_PYSTACK_BACKEND_ENABLED
-    from STATGUI import STATGUI_main
+    from STATGUI import HAVE_NATIVE_STAT, STAT_PYSTACK_BACKEND_ENABLED, STATGUI_main
 except Exception as e:
     HAVE_STATGUI = False
     import_exception = e
@@ -92,32 +86,10 @@ if __name__ == '__main__':
     # argument parsing for the stat-gui command or STAT gui subcommand
     if HAVE_STATGUI:
         gui_parser = subparsers.add_parser('gui')
-        trace_group = gui_parser.add_mutually_exclusive_group()
-        trace_group.add_argument("-P", "--withpc", help="sample program counter in addition to function name", action="store_true")
-        trace_group.add_argument("-m", "--withmoduleoffset", help="sample module offset only", action="store_true")
-        trace_group.add_argument("-i", "--withline", help="sample source line number in addition to function name", action="store_true")
-        gui_parser.add_argument("-s", "--sleep", help="sleep for the specified number of seconds before attaching", metavar="SLEEPTIME", type=int)
-        gui_parser.add_argument("-o", "--withopenmp", help="translate OpenMP stacks to logical application view", action="store_true")
-        gui_parser.add_argument("-w", "--withthreads", help="sample helper threads in addition to the main thread", action="store_true")
-        gui_parser.add_argument("-y", "--pythontrace", help="gather Python script level stack traces", action="store_true")
-        gui_parser.set_defaults(pystack=False)
-        if STAT_PYSTACK_BACKEND_ENABLED:
-            gui_parser.add_argument("-K", "--pystack", help="gather Python application stack traces using PyStack", action="store_true")
-        gui_parser.add_argument("--with-children", help="sample additionally child processes using PyStack", action="store_true")
-        gui_parser.add_argument("-U", "--countrep", help="only gather count and a single representative", action="store_true")
-        gui_parser.add_argument("-d", "--debugdaemons", help="launch the daemons under the debugger", action="store_true")
-        gui_parser.add_argument("-j", "--jobid", help="append specified job ID to output directory name")
-        gui_parser.add_argument("-L", "--logdir", help="logging output directory")
-        gui_parser.add_argument("-l", "--log", help="enable debug logging", choices=['FE', 'BE', 'CP'], action="append")
-        if HAVE_GDB_SUPPORT:
-            gui_parser.add_argument("-G", "--gdb", help="use (cuda) gdb to drive the daemons", action="store_true")
-            gui_parser.add_argument("-Q", "--cudaquick", help="gather less comprehensive, but faster cuda traces", action="store_true")
-        trace_group.add_argument("-M", "--mrnetprintf", help="use MRNet's print for logging", action="store_true")
-        gui_parser.add_argument('--version', action='version', version='%(prog)s {version}'.format(version=__version__ + VERSION_SUFFIX))
-        attach_group = gui_parser.add_mutually_exclusive_group()
-        attach_group.add_argument("-a", "--attach", help="attach to the specified [hostname:]PID", metavar='LAUNCHERPID')
-        attach_group.add_argument("-C", "--create", help="launch the application under STAT's control. All args after -C are used to launch the app", nargs=argparse.REMAINDER)
-        attach_group.add_argument("-I", "--serial", help="attach to the specified [<exe>@<host>:<pid>]+. All args after -I are interpreted as serial processes to attach to", nargs=argparse.REMAINDER)
+        from remote.stat_client_gui import add_gui_arguments
+        # the standalone client can request PyStack from the server without local bindings.
+        add_gui_arguments(gui_parser, version=__version__ + VERSION_SUFFIX,
+                          have_pystack=STAT_PYSTACK_BACKEND_ENABLED or not HAVE_NATIVE_STAT)
         gui_parser.set_defaults(func=STATGUI_main)
 
     # argument parsing for the stat-cl command or STAT cl subcommand

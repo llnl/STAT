@@ -93,6 +93,7 @@ from STAT import (
     STAT_SAMPLE_PC,
     STAT_SAMPLE_THREADS,
     STAT_SAMPLE_CLEAR_ON_SAMPLE,
+    STAT_SAMPLE_COUNT_REP,
     STAT_SAMPLE_PYTHON,
     STAT_SAMPLE_MODULE_OFFSET,
     STAT_CP_NONE,
@@ -244,6 +245,9 @@ class StatSession(object):
             sample_type |= STAT_SAMPLE_MODULE_OFFSET
         elif stack_type == "function and line":
             sample_type |= STAT_SAMPLE_LINE
+
+        if params.get("edge_type") == "count and representative":
+            sample_type |= STAT_SAMPLE_COUNT_REP
 
         with_threads = _bool(params, "with_threads", False)
 

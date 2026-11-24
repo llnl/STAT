@@ -14,6 +14,7 @@ dependencies = ["xdot>=1.3,<2", "Pygments>=2.10"]
 [project.scripts]
 stat-gui = "stat_gui.entry:main"
 stat-view = "stat_gui.entry:view_main"
+stat-gui-remote-cli = "remote.stat_client_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/LLNL/STAT"
