@@ -1,5 +1,6 @@
 # Both variants run the same team; only STAT thread sampling changes.
 VARIANTS=(processes threads)
+OPTIONAL_VARIANTS=(gdb gdb-threads)
 
 build_workload() {
   "$MPI_CXX" "${OPENMP_FLAGS[@]}" "$TEST_DIR/mpi_openmp.cpp" -o "$RUN_DIR/mpi_openmp"

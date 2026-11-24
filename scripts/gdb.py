@@ -81,6 +81,7 @@ class GdbDriver(object):
         """Constructor"""
         init_logging(log_level, log_file)
         logging.info('GDB init')
+        self.gdb_args = list(self.gdb_args)
         self.gdb_args.append('-ex')
         self.gdb_args.append("set pagination 0")
         self.gdb_args.append('-ex')

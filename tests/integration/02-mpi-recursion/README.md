@@ -46,7 +46,8 @@ The runtime check validates the collected output and snapshots against:
         }
       }
     ]
-  }
+  },
+  "gdb": "dyninst"
 }
 ```
 
@@ -56,3 +57,5 @@ This means:
 - Every recursive frame needs `rank_test.c` source information and a positive line number.
 
 [Check syntax](../TEST-CHECKS-FORMAT.md) explains the fields and wildcard matching.
+
+Run the same workload with the GDB backend using `run-tests.sh 02:gdb`.

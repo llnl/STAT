@@ -56,7 +56,8 @@ The runtime check validates the collected output and snapshots against:
         "exclude_ranks": [1]
       }
     ]
-  }
+  },
+  "gdb": "dyninst"
 }
 ```
 
@@ -66,3 +67,5 @@ This means:
 - Waitall and Barrier shows ranks waiting for sender/stall rank.
 
 [Check syntax](../TEST-CHECKS-FORMAT.md) explains the fields and wildcard matching.
+
+Run the same workload with the GDB backend using `run-tests.sh 01:gdb`.

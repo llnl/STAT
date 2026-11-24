@@ -1,5 +1,6 @@
 # Each rank sleeps at its own recursion depth.
 VARIANTS=(default)
+OPTIONAL_VARIANTS=(gdb)
 
 build_workload() {
   "$MPI_CC" "${NATIVE_FLAGS[@]}" "$TEST_DIR/rank_test.c" -o "$RUN_DIR/rank_test"

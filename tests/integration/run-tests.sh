@@ -71,12 +71,13 @@ for selection in "${selected[@]}"; do
     fi
   fi
 
+  OPTIONAL_VARIANTS=()
   source "$test_dir/run.sh"
   variants=("${VARIANTS[@]}")
 
   if [[ "$selection" == *:* ]]; then
     variant="${selection#*:}"
-    if [[ " ${VARIANTS[*]} " != *" $variant "* || -z "$variant" ]]; then
+    if [[ " ${VARIANTS[*]} ${OPTIONAL_VARIANTS[*]} " != *" $variant "* || -z "$variant" ]]; then
       echo "Unknown variant: $selection" >&2
       exit 2
     fi

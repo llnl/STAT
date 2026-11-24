@@ -51,17 +51,18 @@ def new_gdb_instance(pid, gdb_type='gdb'):
     if "TMPDIR" not in os.environ:
         os.environ["TMPDIR"]="/var/tmp"
 
-    try:
-        if 'cuda-gdb' in os.environ['STAT_GDB']:
-            gdb = CudaGdbDriver(pid, 'error', 'stderr')
-        elif 'rocgdb' in os.environ['STAT_GDB']:
-            gdb = RocGdbDriver(pid, 'error', 'stderr')
-        elif 'gdb-oneapi' in os.environ['STAT_GDB']:
-            gdb = OneAPIGdbDriver(pid, 'error', 'stderr')
-        else:
-            gdb = GdbDriver(pid, 'error', 'stderr')
-    except:
+    # prefer the debugger path passed by STAT, which may be outside PATH.
+    command = os.environ.get('STAT_GDB') or 'gdb'
+    if 'cuda-gdb' in command:
+        gdb = CudaGdbDriver(pid, 'error', 'stderr')
+    elif 'rocgdb' in command:
+        gdb = RocGdbDriver(pid, 'error', 'stderr')
+    elif 'gdb-oneapi' in command:
+        gdb = OneAPIGdbDriver(pid, 'error', 'stderr')
+    else:
         gdb = GdbDriver(pid, 'error', 'stderr')
+        gdb.gdb_command = command
+
     if gdb.launch() is False:
         return -1
     gdb_instances[pid] = gdb

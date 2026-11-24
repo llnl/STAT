@@ -52,6 +52,7 @@ except Exception as e:
     import_exception = e
 HAVE_STATGUI = True
 try:
+    from STAT import STAT_PYSTACK_BACKEND_ENABLED
     from STATGUI import STATGUI_main
 except Exception as e:
     HAVE_STATGUI = False
@@ -99,6 +100,10 @@ if __name__ == '__main__':
         gui_parser.add_argument("-o", "--withopenmp", help="translate OpenMP stacks to logical application view", action="store_true")
         gui_parser.add_argument("-w", "--withthreads", help="sample helper threads in addition to the main thread", action="store_true")
         gui_parser.add_argument("-y", "--pythontrace", help="gather Python script level stack traces", action="store_true")
+        gui_parser.set_defaults(pystack=False)
+        if STAT_PYSTACK_BACKEND_ENABLED:
+            gui_parser.add_argument("-K", "--pystack", help="gather Python application stack traces using PyStack", action="store_true")
+        gui_parser.add_argument("--with-children", help="sample additionally child processes using PyStack", action="store_true")
         gui_parser.add_argument("-U", "--countrep", help="only gather count and a single representative", action="store_true")
         gui_parser.add_argument("-d", "--debugdaemons", help="launch the daemons under the debugger", action="store_true")
         gui_parser.add_argument("-j", "--jobid", help="append specified job ID to output directory name")
