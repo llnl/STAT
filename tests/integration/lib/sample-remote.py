@@ -32,7 +32,7 @@ def main():
     parser.add_argument("--prefix", required=True)
     parser.add_argument("--samples", type=int, required=True)
     parser.add_argument("--interval", type=float, required=True)
-    parser.add_argument("--backend", choices=("dyninst", "pystack"), required=True)
+    parser.add_argument("--backend", choices=("dyninst", "pystack", "gdb"), required=True)
     parser.add_argument("--native", action="store_true")
     parser.add_argument("--with-children", action="store_true")
     parser.add_argument("--serial", action="store_true", help="attach directly to the given process PID")
@@ -71,6 +71,8 @@ def main():
 
         attached = client.request("sessions.attach", dict(target_params, backend=args.backend))
         session_id = attached["session_id"]
+        if attached["backend"] != args.backend:
+            raise RuntimeError(f"Requested {args.backend}, but the server attached with {attached['backend']}")
 
         params = {
             "session_id": session_id,

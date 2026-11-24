@@ -207,7 +207,7 @@ else
       [ "${WITH_LINES:-1}" != 0 ] || remote+=(--function-only)
       [ "$WITH_CHILDREN" != 1 ] || remote+=(--with-children)
       [ "${WITH_NATIVE:-0}" != 1 ] || remote+=(--native)
-      [ "$variant" != threads ] || remote+=(--threads)
+      case "$variant" in threads|gdb-threads) remote+=(--threads) ;; esac
       "${remote[@]}" 2>&1 | tee stat-cl.log
     else
       [ "$STAT_INVOCATION" != serial ] || stat+=(-I)
@@ -228,9 +228,17 @@ fi
 
 cat application.log
 
+check_set="${CHECK_SET:-$variant}"
+# GDB runs reuse the README checks: test 03 distinguishes process and thread samples; other GDB runs use default.
+case "$id:$variant" in
+  03:gdb) check_set=processes ;;
+  03:gdb-threads) check_set=threads ;;
+  *:gdb) check_set=default ;;
+esac
+
 # protocol acknowledgements are checked by the remote helper, not CLI log strings.
 if [ "$mode" = remote ]; then
-  common=(--checks "$RUN_DIR/README.md" --check-set "${CHECK_SET:-$variant}"
+  common=(--checks "$RUN_DIR/README.md" --check-set "$check_set"
           --world-size "$workers" --num-threads "$OMP_NUM_THREADS")
   python3 "$TEST_DIR/../lib/validate_stat.py" "${common[@]}" --output "$RUN_DIR/application.log"
   python3 "$TEST_DIR/../lib/validate_stat.py" "${common[@]}" --results "$RUN_DIR" \
@@ -244,12 +252,6 @@ if [ "$mode" = stat ] && [ "$STAT_INVOCATION" != launch ]; then
   cat stat-cl.log >> validation.log
 fi
 
-check_set="${CHECK_SET:-$variant}"
-case "$id:$variant" in
-  03:gdb) check_set=processes ;;
-  03:gdb-threads) check_set=threads ;;
-  *:gdb) check_set=default ;;
-esac
 [ "$variant" != srun ] || check_set=default
 [ "$variant" != torchrun ] || check_set=default
 [ "$variant" != direct ] || check_set=application

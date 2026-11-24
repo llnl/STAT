@@ -39,7 +39,7 @@ Examples using the installed CLI:
         sample-job APPLICATION_JOB_ID --scheduler flux --samples 2
 
 JSON to stdout and saves response.json and DOT files in a unique client-side
-./stat-results/run-* directory. Use --output-dir DIR to select an exact directory.
+./stat_results/run-* directory. Use --output-dir DIR to select an exact directory.
 """
 
 from __future__ import print_function
@@ -53,7 +53,7 @@ from datetime import datetime
 from remote.stat_client_connection import StatRemoteClient, StatRemoteClientError
 
 # the remote server checks which of these backends its build provides.
-SUPPORTED_BACKENDS = ("dyninst", "pystack")
+SUPPORTED_BACKENDS = ("dyninst", "pystack", "gdb")
 DEFAULT_BACKEND = "dyninst"
 
 
@@ -81,7 +81,7 @@ def create_output_dir(requested_dir):
         os.makedirs(path, exist_ok=True)
         return path
 
-    root = os.path.abspath("stat-results")
+    root = os.path.abspath("stat_results")
     os.makedirs(root, exist_ok=True)
 
     # the random suffix prevents collisions between runs started in the same second.
@@ -107,6 +107,7 @@ def common_sample_params(args):
     # keep protocol field names separate from the user-facing CLI option names.
     return {
         "backend": args.backend,
+        "cuda_quick": args.cuda_quick,
         "with_threads": args.with_threads,
         "native": args.native,
         "with_children": args.with_children,
@@ -152,6 +153,8 @@ def main(argv=None):
         sample_parser.add_argument("--native", action="store_true", help="include C/C++ frames with PyStack")
         sample_parser.add_argument("--with-children", action="store_true", help="sample descendant processes with PyStack")
         sample_parser.add_argument("--with-threads", action="store_true")
+        sample_parser.add_argument("--cuda-quick", action="store_true",
+                                   help="collect faster CUDA device traces with --backend gdb --with-threads")
         sample_parser.add_argument(
             "--sample-type", default="function and line",
             choices=["function only", "function and pc", "module offset", "function and line"],
@@ -179,7 +182,7 @@ def main(argv=None):
 
         # the DOT text comes back in JSON; saving it here writes only to the client filesystem.
         sample_parser.add_argument("--output-dir",
-                                   help="client directory for DOT graphs and response.json (default: ./stat-results/run-*)")
+                                   help="client directory for DOT graphs and response.json (default: ./stat_results/run-*)")
 
     args = parser.parse_args(argv)
     if args.command is None:
@@ -187,6 +190,9 @@ def main(argv=None):
 
     if args.command != "status" and args.backend != "pystack" and (args.native or args.with_children):
         parser.error("--native and --with-children require --backend pystack")
+
+    if args.command != "status" and args.cuda_quick and (args.backend != "gdb" or not args.with_threads):
+        parser.error("--cuda-quick requires --backend gdb --with-threads")
 
     if args.command != "status" and args.trace_frequency is not None and args.trace_frequency < 0:
         parser.error("--trace-frequency must be nonnegative")
@@ -200,6 +206,8 @@ def main(argv=None):
         if args.command == "status":
             print_json(client.request("health"))
         elif args.command in ("sample-job", "sample-process"):
+            if args.cuda_quick and not client.remote_health.get("cuda_quick"):
+                parser.error("the remote server does not support --cuda-quick")
             params = common_sample_params(args)
             if args.samples < 1:
                 parser.error("--samples must be positive")

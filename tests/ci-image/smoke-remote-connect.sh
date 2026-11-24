@@ -57,7 +57,7 @@ for rank_mode in plain enroot; do
   if [ "$rank_mode" = enroot ]; then
     rank_options+=(--enroot)
   fi
-  bash "$source_dir/tests/integration/run-tests.sh" --remote "${rank_options[@]}" 01 02 03 04:serial 05:attach 06 07
+  bash "$source_dir/tests/integration/run-tests.sh" --remote "${rank_options[@]}" 01 01:gdb 02 03 04:serial 05:attach 06 07
 done
 
 echo 'PASS: SSH remote control and shared integration matrix'

@@ -16,7 +16,9 @@ not add that option when installing STAT on the cluster.
 On your laptop or desktop, use the `stat-gui-remote-cli` command from a STAT installation. Check that you can run
 `ssh user@cluster true` successfully from that machine.
 
-Dyninst is the default sampling backend. To collect Python stacks, use `--with-pystack=/path/to/bin/pystack` to
+Dyninst is the default sampling backend. Use `--backend gdb` for CPU GDB sampling on a GDB-enabled server.
+For faster CUDA device traces, configure the server to use `cuda-gdb` (`STAT_GDB`) and add `--with-threads --cuda-quick`.
+To collect Python stacks, use `--with-pystack=/path/to/bin/pystack` to
 point client to STAT's installation directory on the cluster. Then add `--backend pystack` to your `sample-process`
 or `sample-job` command. Add `--native` for C/C++ frames, `--with-children` for descendant processes, or `--with-threads`
 for thread stacks. These options also apply to repeated samples.
@@ -60,7 +62,7 @@ If an example below omits this option, add it before the subcommand. SSH setting
 ## Sampling options and output
 
 Sampling commands print the full JSON response to stdout and save the same content as `response.json` alongside the DOT
-graphs on the client machine. By default, each run creates a unique directory under `./stat-results/`; its absolute path
+graphs on the client machine. By default, each run creates a unique directory under `./stat_results/`; its absolute path
 appears in the response's `output_dir` field. Use `--output-dir ./my-samples` to write directly to a chosen directory instead.
 Files with the same names in an explicitly chosen directory are overwritten.
 

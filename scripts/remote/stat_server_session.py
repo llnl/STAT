@@ -85,6 +85,7 @@ from STAT import (
     STAT_SERIAL_GDB_ATTACH,
     STAT_SERIAL_PYSTACK_ATTACH,
     STAT_DAEMON_BACKEND_PYSTACK,
+    STAT_DAEMON_BACKEND_GDB,
     STAT_PYSTACK_BACKEND_ENABLED,
     STAT_SAMPLE_PYSTACK,
     STAT_SAMPLE_CHILDREN,
@@ -105,6 +106,13 @@ except Exception:
     STAT_SAMPLE_OPENMP = None
 
 SUPPORTED_BACKENDS = ("dyninst", "pystack") if STAT_PYSTACK_BACKEND_ENABLED else ("dyninst",)
+# The bindings export this sample flag only in GDB-enabled builds.
+try:
+    from STAT import STAT_SAMPLE_CUDA_QUICK
+except ImportError:
+    STAT_SAMPLE_CUDA_QUICK = None
+else:
+    SUPPORTED_BACKENDS += ("gdb",)
 DEFAULT_BACKEND = "dyninst"
 
 # defaults for daemon and sampling options in remote requests.
@@ -239,6 +247,11 @@ class StatSession(object):
 
         with_threads = _bool(params, "with_threads", False)
 
+        if _bool(params, "cuda_quick"):
+            if self.backend != "gdb" or not with_threads or STAT_SAMPLE_CUDA_QUICK is None:
+                raise StatRemoteError("invalid_params", "cuda_quick requires GDB with thread sampling", "sample")
+            sample_type |= STAT_SAMPLE_CUDA_QUICK
+
         if with_threads:
             sample_type |= STAT_SAMPLE_THREADS
         if _bool(params, "with_openmp", False) and STAT_SAMPLE_OPENMP is not None:
@@ -278,19 +291,13 @@ class StatSession(object):
             stat_cp_policy = STAT_CP_SHAREAPPNODES
         return stat_topology, _str(params, "topology", "1"), stat_cp_policy
 
-    def _attach_mode(self, params, serial=False):
+    def _attach_mode(self, serial=False):
         """Select the native attachment mode independently of daemon startup."""
-        # TODO: Test the GDB backend over SSH for both launcher and serial attachment.
-        gdb_backend = _bool(params, "gdb_backend", False)
         if self.backend == "pystack":
-            if gdb_backend:
-                raise StatRemoteError("invalid_params", "gdb_backend cannot be combined with pystack", "attach")
             return STAT_SERIAL_PYSTACK_ATTACH if serial else STAT_ATTACH
-        if serial:
-            return STAT_SERIAL_GDB_ATTACH if gdb_backend else STAT_SERIAL_ATTACH
-        if gdb_backend:
-            return STAT_GDB_ATTACH
-        return STAT_ATTACH
+        if self.backend == "gdb":
+            return STAT_SERIAL_GDB_ATTACH if serial else STAT_GDB_ATTACH
+        return STAT_SERIAL_ATTACH if serial else STAT_ATTACH
 
     def _wait_ack(self, phase, context=None, timeout_sec=NATIVE_WAIT_TIMEOUT_SECONDS):
         """Wait for one asynchronous native operation to acknowledge completion.
@@ -368,6 +375,8 @@ class StatSession(object):
 
         if self.backend == "pystack":
             self.stat.setDaemonBackend(STAT_DAEMON_BACKEND_PYSTACK)
+        elif self.backend == "gdb":
+            self.stat.setDaemonBackend(STAT_DAEMON_BACKEND_GDB)
 
     def attach(self, params, progress=None):
         """Attach to an application and retain the frontend for interactive requests.
@@ -376,6 +385,11 @@ class StatSession(object):
         retains ownership and handles cleanup.
         """
         self.backend = _str(params, "backend", DEFAULT_BACKEND)
+        if _bool(params, "gdb_backend", False):
+            # the legacy flag overrides Dyninst (the default), but cannot select GDB alongside PyStack.
+            if self.backend not in ("dyninst", "gdb"):
+                raise StatRemoteError("invalid_params", "gdb_backend conflicts with the requested backend", "attach")
+            self.backend = "gdb"
         if self.backend not in SUPPORTED_BACKENDS:
             raise StatRemoteError("invalid_backend", "Unsupported backend %s" % self.backend, "attach")
 
@@ -385,7 +399,7 @@ class StatSession(object):
         # launch: start a new application through the supplied launcher command.
         mode = _str(params, "mode", "attach")
         serial = mode == "serial"
-        application_option = self._attach_mode(params, serial=serial)
+        application_option = self._attach_mode(serial=serial)
 
         self._configure_common(params, application_option)
 
@@ -800,6 +814,7 @@ class StatSessionController(object):
             "stat_version": STAT_VERSION,
             "git_commit": GIT_COMMIT,
             "git_dirty": GIT_DIRTY,
+            "cuda_quick": STAT_SAMPLE_CUDA_QUICK is not None,
             "supported_backends": list(SUPPORTED_BACKENDS),
         }
 
@@ -858,10 +873,18 @@ class StatSessionController(object):
                 "session_busy", "Detach the existing session before attaching another application",
                 "attach", {"session_id": self.session.session_id})
 
+        gdb_path = ""
+        if params.get("backend") == "gdb" or _bool(params, "gdb_backend"):
+            gdb_path = _str(params, "gdb_path").strip()
+
         session = StatSession()
         self.session = session
 
+        # native STAT reads STAT_GDB when building the daemon arguments for this attach.
+        previous_gdb = os.environ.get("STAT_GDB")
         try:
+            if gdb_path:
+                os.environ["STAT_GDB"] = gdb_path
             return session.attach(params, progress)
         except Exception as attach_error:
             try:
@@ -874,6 +897,12 @@ class StatSessionController(object):
                                "cleanup_confirmed": False}) from attach_error
             self.session = None
             raise
+        finally:
+            if gdb_path:
+                if previous_gdb is None:
+                    os.environ.pop("STAT_GDB", None)
+                else:
+                    os.environ["STAT_GDB"] = previous_gdb
 
     def _session(self, params, phase):
         """Find the requested session or report its missing identifier."""
