@@ -399,6 +399,32 @@ Slurm attachment. It tries the launcher host first, then tries the first allocat
 outside the allocation and server startup there fails. To browse jobs when STAT cannot run on the login host,
 supply `--remote-server-host` with a compatible host that can query Slurm.
 
+For help with startup, SSH, and sampling errors, see
+[Slurm Job Attachment](src/stat_troubleshoot.md#slurm-job-attachment) in the Troubleshooting Guide.
+
+## Capture logs for a remote sample
+
+For `sample-job` or `sample-process`, use `--remote-log-dir` to collect diagnostic logs on the cluster
+and `--output-dir` to save the CLI response and graphs on your workstation.
+
+- **On the cluster**, `--remote-log-dir` enables frontend, daemon, and stack-walker error logs.
+  Choose a fresh absolute path on storage shared by the STAT server and the application nodes.
+  The server creates the directory and any missing parents when logging starts.
+- **On your workstation**, `--output-dir` saves `response.json` and any DOT graphs returned by the server.
+
+For example, from your workstation:
+
+```bash
+stat-gui-remote-cli \
+  --remote-login user@login-host \
+  --remote-server-host compute-host \
+  --remote-prefix /path/to/stat-install \
+  sample-job JOBID --scheduler slurm \
+  --backend pystack --native \
+  --remote-log-dir /shared/scratch/user/stat-JOBID-attempt-1 \
+  --output-dir ./stat-JOBID-attempt-1
+```
+
 ## Sessions and connection loss
 
 Normal sampling commands detach before returning. The server attempts to detach when the client closes its connection. An SSH

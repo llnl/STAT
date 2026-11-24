@@ -194,7 +194,16 @@ def _stat_error(stat, code, phase, message, context=None):
     except Exception:
         detail = ""
     if detail:
-        message = "%s: %s" % (message, detail)
+        message = "%s: %s" % (message, detail.rstrip())
+        if "daemons reported an error" in detail.lower() and context:
+            if phase == "sample" and context.get("backend") == "pystack":
+                message += "\nCheck the application log to confirm Python has started."
+                if not context.get("with_children"):
+                    message += " If Python runs beneath a launcher, try --with-children."
+            if context.get("log_dir"):
+                message += " Report persistent failures with logs from %s." % context["log_dir"]
+            else:
+                message += " If it persists, rerun with --remote-log-dir <absolute-shared-path> and report the logs."
     return StatRemoteError(code, message, phase, context)
 
 
@@ -222,6 +231,8 @@ class StatSession(object):
         self.stat = STAT_FrontEnd()
         self.state = "new"
         self.backend = DEFAULT_BACKEND
+        self.with_children = False
+        self.log_dir = None
         self.mode = None
         self.remote_host = None
         self.pid = None
@@ -315,7 +326,7 @@ class StatSession(object):
             if ret == STAT_OK:
                 return
             if ret != STAT_PENDING_ACK:
-                raise _stat_error(self.stat, "stat_%s_failed" % phase, phase, "STAT operation failed", context)
+                raise _stat_error(self.stat, "stat_%s_failed" % phase, phase, "STAT %s failed" % phase, context)
             if time.monotonic() > deadline:
                 raise StatRemoteError(
                     "stat_%s_timeout" % phase, "Timed out waiting for STAT %s acknowledgement" % phase,
@@ -346,7 +357,15 @@ class StatSession(object):
         if _bool(params, "use_mrnet_printf", False):
             log_type |= STAT_LOG_MRN
         if log_type != STAT_LOG_NONE:
-            ret = self.stat.startLog(log_type, _str(params, "log_dir", os.environ.get("HOME", ".")))
+            log_dir = _str(params, "log_dir", os.environ.get("HOME", "."))
+            try:
+                os.makedirs(log_dir, mode=0o700, exist_ok=True)
+            except (OSError, ValueError) as exc:
+                raise StatRemoteError(
+                    "stat_log_failed", "Could not create log directory %r: %s" % (log_dir, exc), "attach"
+                ) from exc
+            self.log_dir = log_dir
+            ret = self.stat.startLog(log_type, log_dir)
             if ret != STAT_OK:
                 raise _stat_error(self.stat, "stat_log_failed", "attach", "Failed to start STAT log")
 
@@ -389,6 +408,7 @@ class StatSession(object):
         retains ownership and handles cleanup.
         """
         self.backend = _str(params, "backend", DEFAULT_BACKEND)
+        self.with_children = _bool(params, "with_children")
         if _bool(params, "gdb_backend", False):
             # the legacy flag overrides Dyninst (the default), but cannot select GDB alongside PyStack.
             if self.backend not in ("dyninst", "gdb"):
@@ -431,7 +451,7 @@ class StatSession(object):
 
             if remote_host is None or not pids:
                 raise StatRemoteError(
-                    "job_resolve_failed", "Failed to resolve job id %s" % jobid,
+                    "job_resolve_failed", "No running launcher found for job %s. Retry after the workload step starts." % jobid,
                     "attach", {"jobid": jobid})
 
             if len(pids) != 1:
@@ -476,7 +496,7 @@ class StatSession(object):
         # start the appropriate native daemon-launch path for the selected target.
         self.mode = mode
         if mode == "attach":
-            if self.remote_host and self.remote_host != "localhost":
+            if self.remote_host and not attach_helper.is_local_host(self.remote_host):
                 ret = self.stat.attachAndSpawnDaemons(self.pid, self.remote_host)
             else:
                 ret = self.stat.attachAndSpawnDaemons(self.pid)
@@ -617,6 +637,7 @@ class StatSession(object):
         if _str(params, "backend", self.backend) != self.backend:
             raise StatRemoteError("invalid_backend", "Changing backend requires a new attachment", "sample")
 
+        self.with_children = _bool(params, "with_children")
         sample_type = self._sample_type(params)
         # validate native arguments before pausing a running application.
         num_retries = _int(params, "num_retries", DEFAULT_NUM_RETRIES)
@@ -734,7 +755,9 @@ class StatSession(object):
                 raise _stat_error(self.stat, "stat_detach_failed", "detach", "Failed to detach application", self.context())
             self._wait_ack("detach", self.context())
 
-        self.stat.shutDown()
+        # Launcher discovery may fail before native daemon startup is attempted.
+        if self.mode is not None:
+            self.stat.shutDown()
         if self.flux_helper:
             self.flux_helper.close()
         self.state = "detached"
@@ -783,6 +806,8 @@ class StatSession(object):
             "session_id": self.session_id,
             "state": self.state,
             "backend": self.backend,
+            "with_children": self.with_children,
+            "log_dir": self.log_dir,
             "mode": self.mode,
             "remote_host": self.remote_host,
             "pid": self.pid,
@@ -854,7 +879,7 @@ class StatSessionController(object):
 
         if remote_host is None or not pids:
             raise StatRemoteError(
-                "job_resolve_failed", "Failed to resolve job id %s" % jobid,
+                "job_resolve_failed", "No running launcher found for job %s. Retry after the workload step starts." % jobid,
                 "resolve", {"jobid": jobid})
         processes = attach_helper.get_remote_process_details(
             "ssh",

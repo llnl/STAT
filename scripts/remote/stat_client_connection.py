@@ -164,11 +164,26 @@ class StatRemoteClient(object):
         result = self._run_ssh(command, server_host)
         lines = result.stdout.splitlines()
         machines = re.findall(r"^\s*Machine:\s*(.+)$", result.stdout, re.MULTILINE)
+
         if result.returncode != 0 or not lines or len(machines) != 2:
-            raise RuntimeError(
-                "Could not inspect %s/bin/STATD on %s. Check --remote-login, "
-                "--remote-server-host, --remote-prefix, and passwordless SSH."
-                % (remote_prefix, host))
+            message = "Could not inspect %s on %s." % (statd, host)
+            detail = result.stderr.strip()
+            if detail:
+                message += " " + detail
+
+            # additional message for a few common error patterns seen
+            if "pam_slurm_adopt" in detail and "no active jobs" in detail.lower():
+                message += " If the job just started, retry after the prolog finishes."
+            elif "permission denied (publickey" in detail.lower():
+                if server_host:
+                    message += (" If the job just started, retry after the Slurm prolog finishes."
+                                " Also, check passwordless access to nodes.")
+                else:
+                    message += " Check passwordless SSH access to the login host."
+            else:
+                message += " Check --remote-login, --remote-server-host, and --remote-prefix."
+
+            raise RuntimeError(message)
 
         host_arch = lines[0]
         host_machine, statd_arch = machines
@@ -371,7 +386,19 @@ class StatRemoteClient(object):
                 continue
 
             if not response.get("ok"):
-                raise StatRemoteClientError(response.get("error", {}))
+                error = response.get("error", {})
+                if method == "sessions.attach" and error.get("code") == "stat_attach_failed":
+                    message = error["message"] + "\nIf the workload just started, retry after it is ready."
+                    log_dir = error.get("context", {}).get("log_dir")
+
+                    if log_dir:
+                        message += " If it persists, report stderr and logs from %s." % log_dir
+                    else:
+                        message += (" If it persists, rerun with --remote-log-dir <absolute-shared-path>"
+                                    " and report stderr and logs.")
+                    error["message"] = message
+
+                raise StatRemoteClientError(error)
             return response.get("result")
 
     @staticmethod

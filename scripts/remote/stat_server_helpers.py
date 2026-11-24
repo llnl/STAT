@@ -94,7 +94,7 @@ def jobid_to_hostname_pid(rm, jobid, remoteshell):
         from remote.stat_server_slurm import SlurmJobDiscovery
 
         def run_command(command, host=None):
-            argv = (["bash", "-c", command] if host is None else
+            argv = (["bash", "-c", command] if host is None or is_local_host(host) else
                     remote_shell_argv(host, command, executable=remoteshell))
             return subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                   universal_newlines=True, check=False, timeout=30)
@@ -233,9 +233,15 @@ def _run_command(argv, timeout=30):
     return proc.returncode, _decode(stdout), _decode(stderr)
 
 
+def is_local_host(host):
+    """Check whether host is the machine running the STAT server."""
+    hostname = socket.gethostname()
+    return host in ("localhost", hostname, hostname.split(".", 1)[0], socket.getfqdn())
+
+
 def _remote_command(remoteshell, remotehost, command, timeout=None):
     """Run on the server for local hostnames, otherwise through the remote shell."""
-    if remotehost in ("localhost", socket.gethostname(), socket.getfqdn()):
+    if is_local_host(remotehost):
         return _run_command(["sh", "-c", command], timeout=timeout)
     return _run_command(
         remote_shell_argv(remotehost, command, executable=remoteshell), timeout=timeout)

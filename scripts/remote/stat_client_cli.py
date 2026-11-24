@@ -131,7 +131,7 @@ def write_dot(output_dir, result):
 def common_sample_params(args):
     """Translate shared CLI sampling options into server request parameters."""
     # keep protocol field names separate from the user-facing CLI option names.
-    return {
+    params = {
         "backend": args.backend,
         "cuda_quick": args.cuda_quick,
         "with_threads": args.with_threads,
@@ -143,6 +143,14 @@ def common_sample_params(args):
         "retry_freq": args.retry_freq,
         "max_threads_per_daemon": args.max_threads_per_daemon,
     }
+    if args.remote_log_dir:
+        params.update(
+            log_frontend=True,
+            log_backend=True,
+            log_swerr=True,
+            log_dir=args.remote_log_dir,
+        )
+    return params
 
 
 def main(argv=None):
@@ -209,6 +217,11 @@ def main(argv=None):
         sample_parser.add_argument("-v", "--verbose", action="count", default=0,
                                    help="print session details and graph paths (-vv includes DOT text)")
 
+        sample_parser.add_argument(
+            "--remote-log-dir",
+            help="absolute shared path for STAT frontend, daemon and stack-walker error logs",
+        )
+
         # the DOT text comes back in JSON; saving it here writes only to the client filesystem.
         sample_parser.add_argument("--output-dir",
                                    help="client directory for DOT graphs and response.json (default: ./stat_results/run-*)")
@@ -225,6 +238,9 @@ def main(argv=None):
 
     if args.command != "status" and args.trace_frequency is not None and args.trace_frequency < 0:
         parser.error("--trace-frequency must be nonnegative")
+
+    if args.command != "status" and args.remote_log_dir is not None and not os.path.isabs(args.remote_log_dir):
+        parser.error("--remote-log-dir must be an absolute path on the cluster")
 
     # one connection owns this command; close it even after a server or sampling error.
     client = build_client(args)
@@ -277,15 +293,17 @@ def main(argv=None):
                 for result in outputs["samples"]:
                     result["local_dot"] = write_dot(output_dir, result)
 
-                outputs["detach"] = client.request("sessions.detach", {"session_id": session_id})
-            except Exception:
-                # preserve the original failure if cleanup also fails.
+            except Exception as sample_error:
                 try:
                     client.request("sessions.detach", {"session_id": session_id})
-                except Exception:
-                    pass
+                except Exception as cleanup_error:
+                    if isinstance(sample_error, StatRemoteClientError):
+                        sample_error.error["cleanup_error"] = str(cleanup_error)
+                    else:
+                        raise RuntimeError("%s. Detach failed: %s" % (sample_error, cleanup_error)) from sample_error
                 raise
 
+            outputs["detach"] = client.request("sessions.detach", {"session_id": session_id})
             display = sampling_response_for_stdout(outputs, args.verbose, client.remote_health["hostname"])
             print_json(outputs, output_dir, stdout_data=display)
     except StatRemoteClientError as exc:

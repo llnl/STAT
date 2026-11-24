@@ -163,10 +163,18 @@ class SlurmJobDiscovery(object):
         # returns all members; match the exact element shown by squeue's JobID.
         if jobid.isdigit():
             records = [record for record in records if record.get('JobId') == jobid]
-        if len(records) != 1 or records[0].get('JobState') != 'RUNNING':
+        if len(records) != 1:
             raise RuntimeError('Running job %s is no longer available or is ambiguous' % jobid)
 
         fields = records[0]
+        state = fields.get('JobState', 'unknown')
+        reason = fields.get('Reason', '')
+        if state == 'CONFIGURING' or reason.lower() == 'prolog':
+            raise RuntimeError('Slurm is starting job %s. Retry launcher discovery after the prolog finishes.' % jobid)
+        if state != 'RUNNING':
+            detail = ' (%s)' % reason if reason and reason != 'None' else ''
+            raise RuntimeError('Slurm job %s is %s%s.' % (jobid, state, detail))
+
         canonical_id = fields.get('JobId', '')
         if not re.fullmatch(r'[0-9]+', canonical_id):
             raise RuntimeError('Could not read canonical job ID for job %s' % jobid)
@@ -265,5 +273,10 @@ class SlurmJobDiscovery(object):
             return ''
         if result.returncode != 0:
             detail = result.stderr.strip() or 'command exited with status %s' % result.returncode
+            if 'pam_slurm_adopt' in detail and 'no active jobs' in detail.lower():
+                detail += ' If the job just started, retry after the prolog finishes.'
+            elif 'permission denied (publickey' in detail.lower():
+                detail += (' If the job just started, retry after the Slurm prolog finishes. '
+                           'Also, check passwordless access to nodes.')
             raise RuntimeError('%s: %s' % (message, detail))
         return result.stdout
