@@ -82,7 +82,7 @@ finish() {
   fi
 
   # Keep sampled trees visible even when attachment or validation fails.
-  if [ "$mode" = stat ]; then
+  if [ "$mode" != plain ]; then
     shopt -s nullglob
     graphs=(stat_results/*/*.2D.dot)
 
@@ -165,17 +165,22 @@ else
     pid=$!
   fi
 
-  # Attach to the launcher, or to the local Python PID in serial mode.
-  if [ "$mode" = stat ]; then
+  # sample the launched application unless this is a workload-only run.
+  if [ "$mode" != plain ]; then
     if [ "$EXECUTION" = flux ]; then
-      start_flux_debug_launcher
+      if [ "$mode" = stat ]; then
+        start_flux_debug_launcher
+      elif ! flux job wait-event -t 30 -p guest.exec.eventlog "$flux_job" shell.start; then
+        flux job eventlog "$flux_job" >&2 || true
+        exit 1
+      fi
     fi
 
     # Python launchers can be discoverable before their application workers exist.
     if [ -n "${READY_PATTERN:-}" ]; then
       deadline=$((SECONDS + 90))
       until [ "$(grep -oE "$READY_PATTERN" application.log | wc -l)" -ge "$workers" ]; do
-        kill -0 "$pid" || { cat application.log; exit 1; }
+        [ -z "$pid" ] || kill -0 "$pid" || { cat application.log; exit 1; }
 
         if [ "$SECONDS" -ge "$deadline" ]; then
           echo "Timed out waiting for $workers workload readiness records: $READY_PATTERN" >&2
@@ -187,10 +192,27 @@ else
     fi
 
     sleep "$ATTACH_SETTLE_SECONDS"
-    kill -0 "$pid"
+    [ -z "$pid" ] || kill -0 "$pid"
 
-    [ "$STAT_INVOCATION" != serial ] || stat+=(-I)
-    "${stat[@]}" "$pid" 2>&1 | tee stat-cl.log
+    if [ "$mode" = remote ]; then
+      remote=(python3 "$TEST_DIR/../lib/sample-remote.py"
+              --prefix "$STAT_PREFIX" --samples "$SAMPLE_COUNT" --interval "$SAMPLE_INTERVAL"
+              --results "$RUN_DIR/stat_results/remote" --backend "$BACKEND")
+      if [ "$EXECUTION" = flux ]; then
+        remote+=(--flux-job "$flux_job")
+      else
+        remote+=(--pid "$pid")
+      fi
+      [ "$STAT_INVOCATION" != serial ] || remote+=(--serial)
+      [ "${WITH_LINES:-1}" != 0 ] || remote+=(--function-only)
+      [ "$WITH_CHILDREN" != 1 ] || remote+=(--with-children)
+      [ "${WITH_NATIVE:-0}" != 1 ] || remote+=(--native)
+      case "$variant" in threads|gdb-threads) remote+=(--threads) ;; esac
+      "${remote[@]}" 2>&1 | tee stat-cl.log
+    else
+      [ "$STAT_INVOCATION" != serial ] || stat+=(-I)
+      "${stat[@]}" "$pid" 2>&1 | tee stat-cl.log
+    fi
   fi
 
   if [ "$EXECUTION" = flux ]; then
@@ -206,18 +228,30 @@ fi
 
 cat application.log
 
+check_set="${CHECK_SET:-$variant}"
+# GDB runs reuse the README checks: test 03 distinguishes process and thread samples; other GDB runs use default.
+case "$id:$variant" in
+  03:gdb) check_set=processes ;;
+  03:gdb-threads) check_set=threads ;;
+  *:gdb) check_set=default ;;
+esac
+
+# protocol acknowledgements are checked by the remote helper, not CLI log strings.
+if [ "$mode" = remote ]; then
+  common=(--checks "$RUN_DIR/README.md" --check-set "$check_set"
+          --world-size "$workers" --num-threads "$OMP_NUM_THREADS")
+  python3 "$TEST_DIR/../lib/validate_stat.py" "${common[@]}" --output "$RUN_DIR/application.log"
+  python3 "$TEST_DIR/../lib/validate_stat.py" "${common[@]}" --results "$RUN_DIR" \
+    --backend "$BACKEND" --sample-count "$SAMPLE_COUNT"
+  exit
+fi
+
 # Check completion and every sample against the saved README expectations.
 cat application.log > validation.log
 if [ "$mode" = stat ] && [ "$STAT_INVOCATION" != launch ]; then
   cat stat-cl.log >> validation.log
 fi
 
-check_set="${CHECK_SET:-$variant}"
-case "$id:$variant" in
-  03:gdb) check_set=processes ;;
-  03:gdb-threads) check_set=threads ;;
-  *:gdb) check_set=default ;;
-esac
 [ "$variant" != srun ] || check_set=default
 [ "$variant" != torchrun ] || check_set=default
 [ "$variant" != direct ] || check_set=application

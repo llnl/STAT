@@ -1,0 +1,31 @@
+#!/bin/sh
+# @configure_input@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+
+# provide command-line access to remote STAT sampling over SSH.
+# set the installed Python environment before starting the remote client.
+
+export prefix=@prefix@
+export exec_prefix=@exec_prefix@
+
+if test -n "$STAT_PREFIX" ; then
+    export prefix=$STAT_PREFIX
+fi
+
+export PYTHON_PREFIX=${prefix}
+export PYTHON_EXEC_PREFIX=${exec_prefix}
+
+if test -z $LD_LIBRARY_PATH
+then
+	export LD_LIBRARY_PATH=$prefix/lib
+else
+	export LD_LIBRARY_PATH=$prefix/lib:$LD_LIBRARY_PATH
+fi
+if test -n "$PYTHONPATH" ; then
+    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@:$PYTHONPATH
+else
+    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
+fi
+
+exec @STATPYTHON@ -m remote.stat_client_cli "$@"

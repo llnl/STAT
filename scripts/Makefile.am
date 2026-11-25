@@ -1,18 +1,31 @@
+pkgdata_DATA = stat-env.sh
+
 dist_bin_SCRIPTS = run_one_sec stat-dot-tree
 bin_SCRIPTS = STAT stat-cl stat-script stat-core-merger attach-helper
+
 python_PYTHON = STATmain.py stat_merge_base.py STATmerge.py core_file_merger.py bg_core_backtrace.py attach_helper.py STAThelper.py
 python_PYTHON += stat_build_info.py
+python_PYTHON += stat_py_stack.py stat_pystack_parser.py stat_pystack_process_tree.py
+
 if ENABLE_GDB
 python_PYTHON += stat_cuda_gdb.py cuda_gdb.py gdb.py roc_gdb.py oneapi_gdb.py
 endif
-python_PYTHON += stat_py_stack.py stat_pystack_parser.py stat_pystack_process_tree.py
+
 if ENABLE_GUI
+bin_SCRIPTS += stat-gui-server stat-gui-remote-cli
+remotedir = $(pythondir)/remote
+remote_PYTHON = remote/__init__.py remote/stat_client_connection.py
+remote_PYTHON += remote/stat_server_session.py remote/stat_server.py remote/stat_client_cli.py
+remote_PYTHON += remote/stat_server_helpers.py remote/stat_server_slurm.py remote/stat_server_flux.py
 python_PYTHON += STATGUI.py STATview.py
+
 if ENABLE_PYTHON2
 python_PYTHON += xdot.py
 endif
 bin_SCRIPTS += STATGUI STATview stat-gui stat-view
+
 endif
+
 if ENABLE_STATBENCH
 bin_SCRIPTS += STATBench stat-bench
 endif

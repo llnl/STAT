@@ -9,59 +9,9 @@ if test -n "$STAT_PREFIX" ; then
 fi
 export STAT_BIN=$prefix/bin/STATbin
 
-if test -z $LD_LIBRARY_PATH
-then
-	export LD_LIBRARY_PATH=$prefix/lib
-else
-	export LD_LIBRARY_PATH=$prefix/lib:$LD_LIBRARY_PATH
-fi
-if test -z "$STAT_LMON_REMOTE_LOGIN" ; then
-    export STAT_LMON_REMOTE_LOGIN=@rshcmd@
-fi
-if test -z "$STAT_XPLAT_RSH" ; then
-    export STAT_XPLAT_RSH=@rshcmd@
-fi
-if test -z "$STAT_GDB" ; then
-    export STAT_GDB=@gdbcmd@
-fi
-if test -z "$STAT_PYSTACK" && test -n "@pystackcmd@" ; then
-    export STAT_PYSTACK="@pystackcmd@"
-fi
-if test -z "$STAT_FGFS_FILTER_PATH" ; then
-    if test -n "$FGFS_PREFIX" ; then
-        export STAT_FGFS_FILTER_PATH=$FGFS_PREFIX/lib/libfgfs_filter.so
-    else
-        export STAT_FGFS_FILTER_PATH=@FGFSFILTERPATH@
-    fi
-fi
-if test -z "$STAT_MRNET_COMM_PATH" ; then
-    if test -n "$MRNET_PREFIX" ; then
-        export STAT_MRNET_COMM_PATH=$MRNET_PREFIX/bin/mrnet_commnode
-    else
-        export STAT_MRNET_COMM_PATH=@MRNETCOMMNODEBIN@
-    fi
-fi
-if test -z "$STAT_LMON_PREFIX" ; then
-    if test -n "$LMON_PREFIX" ; then
-        export STAT_LMON_PREFIX=$LMON_PREFIX
-    else
-        export STAT_LMON_PREFIX=@LAUNCHMONPREFIX@
-    fi
-fi
-if test -z "$STAT_LMON_LAUNCHMON_ENGINE_PATH" ; then
-    if test -n "$LMON_PREFIX" ; then
-        export STAT_LMON_LAUNCHMON_ENGINE_PATH=$LMON_PREFIX/bin/launchmon
-    else
-        export STAT_LMON_LAUNCHMON_ENGINE_PATH=@LAUNCHMONBIN@
-    fi
-fi
-if test -z "$STAT_LMON_NEWLAUNCHMON_ENGINE_PATH" ; then
-    if test -n "$LMON_PREFIX" ; then
-        export STAT_LMON_NEWLAUNCHMON_ENGINE_PATH=$LMON_PREFIX/bin/newlaunchmon
-    else
-        export STAT_LMON_NEWLAUNCHMON_ENGINE_PATH=@NEWLAUNCHMONBIN@
-    fi
-fi
+datarootdir=@datarootdir@
+. "@datadir@/@PACKAGE@/stat-env.sh"
+
 if test -z "$DYNINSTAPI_RT_LIB" ; then
     if test -n "$STACKWALKER_PREFIX" ; then
         export DYNINSTAPI_RT_LIB=$STACKWALKER_PREFIX/lib/libdyninstAPI_RT.so
@@ -69,19 +19,5 @@ if test -z "$DYNINSTAPI_RT_LIB" ; then
         export DYNINSTAPI_RT_LIB=@STACKWALKERPREFIX@/lib/libdyninstAPI_RT.so
     fi
 fi
-if test -z "$STAT_MRNET_DEBUG_LOG_DIRECTORY" ; then
-    export STAT_MRNET_DEBUG_LOG_DIRECTORY=/dev/null
-fi
-if test -z "$STAT_CONNECT_TIMEOUT" ; then
-    export STAT_CONNECT_TIMEOUT=600
-fi
-if test -z "$LMON_FE_ENGINE_TIMEOUT" ; then
-    export LMON_FE_ENGINE_TIMEOUT=600
-fi
 
-if test -n "$PYTHONPATH" ; then
-    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@:$PYTHONPATH
-else
-    export PYTHONPATH=@pythondir@:@pyexecdir@:@PYTHONPATH@
-fi
 exec @STATPYTHON@ @pythondir@/STATmain.py cl "$@"

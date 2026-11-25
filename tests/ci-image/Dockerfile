@@ -37,8 +37,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY tests/ci-image/pixi.toml /opt/stat-pixi/pixi.toml
+# discard the package cache in the same layer so only the installed environment is exported.
 RUN curl -fsSL https://pixi.sh/install.sh | sh \
-    && pixi install --manifest-path /opt/stat-pixi/pixi.toml
+    && pixi install --manifest-path /opt/stat-pixi/pixi.toml \
+    && rm -rf "$PIXI_CACHE_DIR"
 
 FROM pixi AS dyninst
 
@@ -63,7 +65,7 @@ FROM libraries AS runtime
 # Ubuntu packages support MPI workloads and the standalone GUI smoke outside Pixi.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-         gcc g++ python3 graphviz openmpi-bin libopenmpi-dev \
+         gcc g++ python3 graphviz openmpi-bin libopenmpi-dev openssh-server \
          python3-venv python3-gi python3-gi-cairo gir1.2-gtk-3.0 librsvg2-common xvfb xauth \
          jq squashfs-tools parallel libcap2-bin \
     && case "$TARGETARCH" in \
@@ -76,6 +78,16 @@ RUN apt-get update \
     && apt-get install -y /tmp/enroot.deb \
     && rm /tmp/enroot.deb
 
+# prepare the existing Ubuntu UID 1000 account for key-only loopback SSH tests.
+# password authentication is disabled in the test configuration; a non-locked
+# password field lets sshd accept public keys without runtime account changes.
+RUN test_user=$(getent passwd 1000 | cut -d: -f1) \
+    && test -n "$test_user" \
+    && usermod -p x "$test_user" \
+    && mkdir -p /run/sshd
+COPY tests/ci-image/sshd_config /opt/stat-ci/sshd_config
+COPY --chmod=755 tests/ci-image/with-loopback-ssh.sh /opt/stat-ci/with-loopback-ssh.sh
+
 # LaunchMON identifies OpenRTE through this symbol, stripped by Ubuntu packaging.
 # TODO: Maybe a better way here, can be improved.
 RUN objcopy --add-symbol 'orterun=.text:0,global,function' /usr/bin/orterun /tmp/orterun \
@@ -85,14 +97,14 @@ RUN objcopy --add-symbol 'orterun=.text:0,global,function' /usr/bin/orterun /tmp
 # Enroot needs its own root filesystem; bundle Ubuntu with matching MPI libraries for the nested MPI smoke.
 # Tests extract this image into temporary storage, avoiding image downloads during validation.
 COPY --from=inner /opt/stat-workloads /opt/stat-workloads
-COPY --from=inner / /opt/ubuntu-rootfs
-RUN mksquashfs /opt/ubuntu-rootfs /opt/ubuntu.sqsh \
+# mount the inner stage during compression so the unpacked rootfs is not exported.
+RUN --mount=type=bind,from=inner,target=/opt/ubuntu-rootfs \
+    mksquashfs /opt/ubuntu-rootfs /opt/ubuntu.sqsh \
       -comp zstd \
       -b 1M \
       -processors 2 \
       -noappend \
-      -exit-on-error \
-    && rm -rf /opt/ubuntu-rootfs
+      -exit-on-error
 
 # Viewer unit tests use a virtual display; keep these tools out of application rank images.
 RUN apt-get update && apt-get install -y --no-install-recommends xvfb xauth \

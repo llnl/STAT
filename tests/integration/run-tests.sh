@@ -16,16 +16,22 @@ while [ "$#" -gt 0 ]; do
     --config) config="${2:?--config needs a file}"; shift ;;
     --plain) mode=plain ;;
     --stat) mode=stat ;;
+    --remote) mode=remote ;;
     --enroot) rank_container=enroot ;;
     --dry-run) dry_run=1 ;;
     -h|--help)
-      echo "Usage: $0 [--config FILE] [--plain|--stat] [--enroot] [--dry-run] [TEST[:VARIANT] ...]"
+      echo "Usage: $0 [--config FILE] [--plain|--stat|--remote] [--enroot] [--dry-run] [TEST[:VARIANT] ...]"
       exit 0 ;;
     --*) echo "Unknown option: $1" >&2; exit 2 ;;
     *) selected+=("$1") ;;
   esac
   shift
 done
+
+if [ "$mode" = remote ] && [ -z "${STAT_TEST_REMOTE_LOGIN:-}" ]; then
+  echo "--remote requires STAT_TEST_REMOTE_LOGIN (server must share this launcher's host/PID namespace)" >&2
+  exit 2
+fi
 
 # The profile supplies launcher commands, dependency paths and resource counts.
 config=$(realpath "$config")
@@ -47,6 +53,10 @@ fi
 cases=()
 for selection in "${selected[@]}"; do
   id="${selection%%:*}"
+  if [ "$mode" = remote ] && [[ ! "$selection" =~ ^(0[12367](:.*)?|04:serial|05:attach)$ ]]; then
+    echo "--remote supports 01–03, 04:serial, 05:attach and 06–07 (got $selection)" >&2
+    exit 2
+  fi
 
   case "$id" in
     01) test_dir="$root/01-mpi-ring" ;;

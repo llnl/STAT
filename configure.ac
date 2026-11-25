@@ -114,6 +114,12 @@ AC_FUNC_STRFTIME
 AC_FUNC_VPRINTF
 AC_CHECK_FUNCS([getcwd gethostname gettimeofday mkdir mkfifo pow select strdup getrlimit setrlimit])
 
+# scheduler tools used by remote STAT GUI.
+AC_PATH_PROG([STAT_FLUX_CMD], [flux])
+AC_PATH_PROG([STAT_SRUN_CMD], [srun])
+AC_PATH_PROG([STAT_SQUEUE_CMD], [squeue])
+AC_PATH_PROG([STAT_SCONTROL_CMD], [scontrol])
+
 AC_SUBST(CXX)
 AC_SUBST(CXXFLAGS)
 AC_SUBST(LDFLAGS)
@@ -143,6 +149,7 @@ AC_CONFIG_FILES([Makefile
                  scripts/STAT
                  scripts/stat-cl
                  scripts/stat_build_info.py
+                 scripts/stat-env.sh
                  scripts/Makefile])
 
 if test "$WITH_GUI" = "yes"
@@ -161,6 +168,8 @@ then
 fi
 
 AC_CONFIG_FILES([scripts/stat-core-merger])
-AC_CONFIG_FILES([scripts/attach-helper])
+AC_CONFIG_FILES([scripts/attach-helper
+                 scripts/stat-gui-server
+                 scripts/stat-gui-remote-cli])
 
 AC_OUTPUT
