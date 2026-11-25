@@ -120,6 +120,8 @@ shows launcher PIDs and command lines on the resolved host. Select the launcher,
 
 The main window and Attach dialog show the SSH login and the current operation while a request is running.
 The status returns to **Ready** when the request finishes, or **Disconnected** if the SSH connection closes.
+If the server reports an error, expand **Recent SSH output** in the dialog to see diagnostics from that connection.
+Collapse and reopen the section to include messages that arrived later.
 
 ![STAT remote GUI Attach dialog showing Slurm job and launcher selection](src/figs/stat_remote_gui_connect.png)
 

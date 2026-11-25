@@ -288,7 +288,7 @@ class RemoteGUI:
         from STATview import show_error_dialog, stat_wait_dialog
 
         stat_wait_dialog.destroy()
-        show_error_dialog('Remote STAT: %s' % exc, self)
+        show_error_dialog('Remote STAT: %s' % exc, self, get_ssh_output=getattr(exc, 'recent_ssh_output', None))
         return False
 
     def _delete(self, *args):

@@ -33,6 +33,7 @@ Typical connection lifecycle::
 
 from __future__ import print_function
 
+from collections import deque
 import json
 import os
 import re
@@ -63,9 +64,14 @@ RESPONSE_POLL_INTERVAL_SECONDS = 0.05
 class StatRemoteClientError(Exception):
     """A structured error returned by the server, retaining its diagnostic fields."""
 
-    def __init__(self, error):
+    def __init__(self, error, stderr_lines=()):
         self.error = error
+        self.stderr_lines = stderr_lines
         Exception.__init__(self, error.get("message", "Remote STAT error"))
+
+    def recent_ssh_output(self):
+        """Read the originating connection's output when the GUI expands the details."""
+        return "".join(tuple(self.stderr_lines)).strip()
 
 
 class StatRemoteArchitectureMismatch(RuntimeError):
@@ -101,7 +107,7 @@ class StatRemoteClient(object):
         self.remote_ready = False
         self.architecture_verified_host = None
         self.remote_health = None
-        self.stderr_lines = []
+        self.stderr_lines = None
         self.stderr_reader = None
 
     @classmethod
@@ -212,24 +218,23 @@ class StatRemoteClient(object):
                 raise RuntimeError("Remote STAT client has been shut down")
             if self.proc is not None:
                 return
-            self.stderr_lines = []
+            self.stderr_lines = deque(maxlen=128)
             self.proc = subprocess.Popen(
                 self.argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, universal_newlines=True, bufsize=1)
             self.stderr_reader = threading.Thread(
-                target=self._read_stderr, args=(self.proc.stderr,))
+                target=self._read_stderr, args=(self.proc.stderr, self.stderr_lines))
             self.stderr_reader.daemon = True
             self.stderr_reader.start()
 
-    def _read_stderr(self, stream):
-        """Forward server diagnostics and retain a small startup error tail."""
+    def _read_stderr(self, stream, lines):
+        """Forward complete diagnostics and keep a bounded excerpt for error dialogs."""
         try:
             for line in stream:
-                sys.stderr.write(line)
-                sys.stderr.flush()
-                self.stderr_lines.append(line)
-                if len(self.stderr_lines) > 20:
-                    self.stderr_lines.pop(0)
+                lines.append(line if len(line) <= 4096 else line[:4096] + "…\n")
+                if sys.stderr is not None:
+                    sys.stderr.write(line)
+                    sys.stderr.flush()
         except (ValueError, OSError):
             # close() may release the pipe while a launched job still holds it.
             if not stream.closed:
@@ -367,7 +372,7 @@ class StatRemoteClient(object):
                 if self.stderr_reader is not None:
                     self.stderr_reader.join(SSH_CLEANUP_WAIT_SECONDS)
                 message = "Remote STAT server exited before replying to %s" % method
-                details = "".join(self.stderr_lines).strip()
+                details = "".join(list(self.stderr_lines)[-20:]).strip()
                 if details:
                     message += ":\n%s" % details
                 raise EOFError(message)
@@ -398,7 +403,7 @@ class StatRemoteClient(object):
                                     " and report stderr and logs.")
                     error["message"] = message
 
-                raise StatRemoteClientError(error)
+                raise StatRemoteClientError(error, self.stderr_lines)
             return response.get("result")
 
     @staticmethod

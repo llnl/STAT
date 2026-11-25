@@ -703,7 +703,7 @@ stat_wait_dialog = STAT_wait_dialog()
 #  \param exception - [optional] the exception object
 #
 #  \n
-def show_error_dialog(text, parent=None, exception=None):
+def show_error_dialog(text, parent=None, exception=None, get_ssh_output=None):
     """Display an error dialog."""
 
     # print traceback information to the terminal
@@ -719,11 +719,32 @@ def show_error_dialog(text, parent=None, exception=None):
     label.set_line_wrap(True)
     label.set_selectable(True)
     error_dialog.vbox.pack_start(label, True, True, 0)
-    button = gtk.Button(stock=gtk.STOCK_OK)
-    button.connect("clicked", lambda w, d: error_dialog.destroy(), "ok")
-    error_dialog.vbox.pack_start(button, True, True, 0)
+    # the shared wait dialog passes the exception directly for multi-sample failures.
+    if get_ssh_output is None:
+        get_ssh_output = getattr(exception, 'recent_ssh_output', None)
+    if get_ssh_output is not None:
+        details = gtk.Expander(label='Recent SSH output')
+        view = gtk.TextView()
+        view.set_editable(False)
+        view.set_wrap_mode(gtk.WRAP_CHAR)
+        scroll = gtk.ScrolledWindow()
+        scroll.set_size_request(480, 160)
+        scroll.add(view)
+        details.add(scroll)
+
+        def load_output(expander, _property):
+            if expander.get_expanded():
+                output = get_ssh_output() or 'No SSH output received.'
+                view.get_buffer().set_text(output.replace('\x00', '�'))
+
+        details.connect('notify::expanded', load_output)
+        error_dialog.vbox.pack_start(details, False, False, 0)
+
+    error_dialog.add_button(gtk.STOCK_OK, gtk.RESPONSE_OK)
+    error_dialog.set_default_response(gtk.RESPONSE_OK)
     error_dialog.show_all()
     error_dialog.run()
+    error_dialog.destroy()
 
 
 def load_model_cuts(filename):
