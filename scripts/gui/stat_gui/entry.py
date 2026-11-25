@@ -108,6 +108,11 @@ def _set_application_identity():
         pass
 
 
+def _list_jobs_requested():
+    from remote.stat_client_cli import wants_job_list
+    return wants_job_list(sys.argv[1:])
+
+
 def _main(command):
     """Prepare graphics resources and dispatch to the GUI or viewer."""
 
@@ -121,6 +126,10 @@ def _main(command):
             description='View STAT call graphs without a native STAT installation.')
         parser.add_argument('files', nargs='*', help='optional list of STAT .dot files')
         args = parser.parse_args()
+
+    elif _list_jobs_requested():
+        from remote.stat_client_cli import gui_list_jobs
+        raise SystemExit(gui_list_jobs(sys.argv[1:]))
 
     elif '--help' in sys.argv[1:] or '-h' in sys.argv[1:]:
         from remote.stat_client_gui import gui_help

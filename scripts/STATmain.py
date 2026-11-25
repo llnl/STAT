@@ -38,6 +38,11 @@ if HAVE_DLOPEN is True:
     new_dlflags = ctypes.RTLD_GLOBAL | dlflags
     sys.setdlopenflags(new_dlflags)
 
+if __name__ == '__main__' and sys.argv[1:2] == ['gui']:
+    from remote.stat_client_cli import gui_list_jobs, wants_job_list
+    if wants_job_list(sys.argv[2:]):
+        raise SystemExit(gui_list_jobs(sys.argv[2:]))
+
 HAVE_STATVIEW = True
 import_exception = None
 try:

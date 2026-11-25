@@ -22,7 +22,7 @@ import shutil
 import tempfile
 import time
 
-from remote.stat_client_connection import StatRemoteClient
+from remote.stat_client_connection import StatRemoteClient, flux_job_key, resolve_flux_job
 
 
 def add_remote_arguments(parser):
@@ -67,7 +67,8 @@ def add_gui_arguments(gui_parser, version="4.3.0", have_pystack=True):
     gui_parser.add_argument("-Q", "--cudaquick", help="gather less comprehensive, but faster cuda traces", action="store_true")
 
     trace_group.add_argument("-M", "--mrnetprintf", help="use MRNet's print for logging", action="store_true")
-    gui_parser.add_argument('--version', action='version', version='%(prog)s {version}'.format(version=version))
+    if version is not None:
+        gui_parser.add_argument('--version', action='version', version='%(prog)s {version}'.format(version=version))
 
     attach_group = gui_parser.add_mutually_exclusive_group()
     attach_group.add_argument("-a", "--attach", help="attach to the specified [hostname:]PID", metavar='LAUNCHERPID')
@@ -78,7 +79,8 @@ def add_gui_arguments(gui_parser, version="4.3.0", have_pystack=True):
 
 
 def gui_help():
-    parser = argparse.ArgumentParser(description='STAT GUI: attach locally or over SSH; browse saved graphs with stat-view.')
+    parser = argparse.ArgumentParser(description='STAT GUI: attach locally or over SSH; browse saved graphs with stat-view.',
+        epilog='Use stat-gui [connection options] --list-jobs [--scheduler slurm|flux] to print running jobs as JSON.')
     add_gui_arguments(parser)
     parser.print_help()
 
@@ -308,10 +310,30 @@ class RemoteGUI:
         except Exception as exc:
             return self._error(exc)
 
-        scheduler = args.scheduler if args.scheduler != 'auto' else 'slurm'
-        self.types['Resource Manager'] = [scheduler.title()]
+        # older servers only advertised Slurm job listing.
+        schedulers = self.remote.health.get('job_schedulers', ['slurm'])
+        scheduler = args.scheduler
+        if scheduler == 'auto':
+            scheduler = 'flux' if args.flux_allocation else next(iter(schedulers), 'slurm')
+
+        self.types['Resource Manager'] = [name.title() for name in dict.fromkeys([scheduler, *schedulers])]
         self.options['Resource Manager'] = scheduler.title()
         return self.show_attach_dialog(remote=True)
+
+    def _ssh_client(self, allocation=None):
+        """Configure an SSH client to start STAT in the specified Flux allocation, if supplied."""
+        args = self.remote_args
+        prefix = args.remote_prefix
+        command = StatRemoteClient.command_for_prefix(prefix) if prefix else 'stat-gui-server'
+        return StatRemoteClient.ssh(args.remote_login, command, ssh_options=args.ssh_option,
+                                    remote_prefix=prefix, remote_server_host=args.remote_server_host,
+                                    flux_allocation=allocation)
+
+    def _use_flux_instance(self, allocation):
+        """Reuse the connection unless the requested Flux allocation or server host has changed."""
+        client = self.remote.client
+        if client.flux_allocation != allocation or client.remote_server_host != self.remote_args.remote_server_host:
+            self.connect_client(self._ssh_client(allocation))
 
     def _connect_from_args(self):
         """Open the requested SSH route and initialize the server's sampling options."""
@@ -323,17 +345,23 @@ class RemoteGUI:
                     'To attach to a remote job, restart the GUI from a terminal:\n\n'
                     'stat-gui --remote-login user@login-host\n\n'
                     'Run stat-gui --help for SSH and scheduler options.')
-            prefix = getattr(args, 'remote_prefix', None)
-            command = StatRemoteClient.command_for_prefix(prefix) if prefix else 'stat-gui-server'
-            client = StatRemoteClient.ssh(
-                args.remote_login, command, ssh_options=args.ssh_option, remote_prefix=prefix,
-                remote_server_host=args.remote_server_host, flux_allocation=args.flux_allocation)
+            client = self._ssh_client(args.flux_allocation)
 
-            # for a Slurm job, discover the launcher host unless the user chose the SSH route.
-            if args.remote_job and args.scheduler in ('auto', 'slurm') and not args.remote_server_host and not args.flux_allocation:
+            discover_host = args.remote_job and not args.remote_server_host and not args.flux_allocation
+            if discover_host and args.scheduler == 'slurm':
                 from remote.stat_client_slurm import resolve_on_login
                 client = self._run('Selecting server host…', resolve_on_login, client, args.remote_job)
-            self.connect_client(client)
+
+            try:
+                self.connect_client(client)
+            except Exception:
+                # auto can still reach a known Slurm job if STAT cannot start on the login architecture.
+                if not (discover_host and args.scheduler == 'auto' and re.fullmatch(r'[0-9_+]+', args.remote_job)):
+                    raise
+
+                from remote.stat_client_slurm import resolve_on_login
+                client = self._run('Selecting server host…', resolve_on_login, client, args.remote_job)
+                self.connect_client(client)
 
             # a blank entry uses the server's debugger, independent of desktop settings.
             self.options['GDB Path'] = ''
@@ -406,25 +434,48 @@ class RemoteGUI:
         self.running_jobs.connect('changed', select_job)
         refresh.connect('clicked', lambda w: self.refresh_jobs(frame, dialog))
 
-        if self.options['Resource Manager'] == 'Slurm':
-            self.refresh_jobs(frame, dialog, initial=True)
-        else:
-            row.set_sensitive(False)
-            self.on_update_process_listing(None, frame, dialog)
+        def change_scheduler(combo):
+            self.options['Resource Manager'] = combo.get_active_text()
+            self.jobid_entry.set_text('')
+            self.refresh_jobs(frame, dialog)
+
+        # reuse the Attach dialog's scheduler dropdown to filter the Running Jobs dropdown.
+        self.combo_boxes['Resource Manager'].connect('changed', change_scheduler)
+        self.refresh_jobs(frame, dialog, initial=True)
+
+    def _list_running_jobs(self, scheduler):
+        # list jobs across allocations unless the user supplied --flux-allocation.
+        allocation = self.remote_args.flux_allocation if scheduler == 'flux' else None
+        if scheduler == 'flux' or self.remote.client.flux_allocation:
+            self._use_flux_instance(allocation)
+
+        params = {'scheduler': scheduler, 'recursive': not allocation}
+        return self._run('Refreshing jobs…', self.remote.request, 'jobs.list', params)['jobs']
 
     def refresh_jobs(self, frame, dialog, initial=False):
-        """Reload the running Slurm jobs and restore the selected job if possible."""
+        """Reload the selected scheduler's jobs and restore the selection when possible."""
+        scheduler = self.options['Resource Manager'].lower()
         previous = self.jobid_entry.get_text().strip()
+
         self.clear_launcher(frame)
         self.running_jobs.remove_all()
+        self.flux_rows = {}
         dialog.set_sensitive(False)
         try:
-            rows = self._run('Refreshing jobs…', self.remote.request, 'jobs.list', {'scheduler': 'slurm'})['jobs']
+            rows = self._list_running_jobs(scheduler)
             rows = sorted(rows, key=lambda row: not row.get('is_batch', True))
+
             for row in rows:
-                self.running_jobs.append(row['jobid'], '  '.join(
-                    str(row.get(field, '')) for field in ('jobid', 'name', 'nodelist')))
+                key = row['jobid']
+                if scheduler == 'flux':
+                    key = flux_job_key(row)
+                    self.flux_rows[key] = row
+                self.running_jobs.append(key, '  '.join((key, row['name'], row['nodelist'])))
         except Exception as exc:
+            # an explicit allocation and job still work with servers predating Flux listing.
+            if scheduler == 'flux' and self.remote_args.flux_allocation and previous:
+                self.on_update_process_listing(None, frame, dialog)
+                return
             self.show_job_status(frame, str(exc))
             return
         finally:
@@ -439,7 +490,7 @@ class RemoteGUI:
             self.running_jobs.set_active(0)
         else:
             self.jobid_entry.set_text('')
-            self.show_job_status(frame, 'No running Slurm jobs.')
+            self.show_job_status(frame, 'No running %s jobs.' % self.options['Resource Manager'])
 
     def on_update_process_listing(self, widget, frame, dialog, listing_filter=None):
         """Show matching launchers or explain how to attach to the selected Flux job."""
@@ -452,10 +503,16 @@ class RemoteGUI:
 
         scheduler = self.options['Resource Manager'].lower()
 
-        # for flux, no process or launcher to attach to.
         if scheduler == 'flux':
-            self.show_job_status(frame, 'Click Attach to start the Flux debug launcher for job %s.' % jobid)
-            self.attach_button.set_sensitive(True)
+            try:
+                job = self.find_flux_job(jobid)
+                allocation = job.get('allocation') or self.remote_args.flux_allocation
+                self.flux_target = allocation, job['jobid']
+
+                self.show_flux_job(frame, job, allocation)
+                self.attach_button.set_sensitive(True)
+            except Exception as exc:
+                self.show_job_status(frame, str(exc))
             return
         dialog.set_sensitive(False)
 
@@ -505,6 +562,50 @@ class RemoteGUI:
         finally:
             dialog.set_sensitive(True)
 
+    def find_flux_job(self, jobid):
+        """Resolve a typed application ID across allocations, or use the selected dropdown row."""
+        allocation = self.remote_args.flux_allocation
+        row = self.flux_rows.get(jobid)
+        if row and (allocation or self.running_jobs.get_active_id() == jobid):
+            return row
+
+        if allocation:
+            typed_id = jobid.replace('ƒ', 'f')
+            for row in self.flux_rows.values():
+                if typed_id in (row['id'], row['jobid'].replace('ƒ', 'f')):
+                    return row
+
+            # with a known allocation, Flux can attach by ID even when listing is unavailable.
+            return {'jobid': jobid}
+
+        return resolve_flux_job(self._list_running_jobs('flux'), jobid)
+
+    def show_flux_job(self, frame, job, allocation):
+        """Display the selected Flux job in the Attach dialog."""
+        from STATview import gtk
+
+        # Flux starts the debugger on Attach, so show the job details until a launcher PID exists.
+        app = job['jobid']
+        if job.get('name'):
+            app = '%s (%s)' % (job['name'], app)
+
+        fields = [
+            ('Application', app),
+            ('Allocation', allocation),
+            ('Nodes', job.get('nodelist')),
+            ('Tasks', job.get('ntasks')),
+        ]
+
+        grid = gtk.Grid(column_spacing=12, row_spacing=3, margin=6)
+        for index, (title, value) in enumerate(fields):
+            if value is not None and value != '':
+                grid.attach(gtk.Label(label=title, xalign=0), 0, index, 1, 1)
+                grid.attach(gtk.Label(label=str(value), xalign=0, selectable=True), 1, index, 1, 1)
+
+        grid.attach(gtk.Label(label="Click Attach to sample this application's ranks.", xalign=0), 0, len(fields), 2, 1)
+        frame.add(grid)
+        grid.show_all()
+
     def pid_toggle_cb(self, button, pid, command):
         """Update the selected PID and enable Attach when a launcher is selected."""
         super().pid_toggle_cb(button, pid, command)
@@ -512,10 +613,11 @@ class RemoteGUI:
 
     def clear_launcher(self, frame):
         """Clear the launcher selection and disable Attach until a new target is ready."""
+        self.flux_target = None
         self.options['PID'] = None
         self.options['Remote Host'] = ''
         self.rh_entry.set_text('')
-        frame.set_label('Current Process List')
+        frame.set_label('Selected Flux Job' if self.options['Resource Manager'] == 'Flux' else 'Current Process List')
         self.attach_button.set_sensitive(False)
         if frame.get_child():
             frame.remove(frame.get_child())
@@ -532,8 +634,10 @@ class RemoteGUI:
     def attach_cb(self, attach_dialog, launch, serial, application_option=None):
         """Build an attach target from the Flux job ID or selected launcher PID."""
         jobid = self.jobid_entry.get_text().strip() if attach_dialog is not None else None
-        if jobid and self.remote_args.scheduler == 'flux':
-            target = dict(mode='jobid', scheduler='flux', jobid=jobid)
+        if jobid and self.options['Resource Manager'] == 'Flux':
+            if self.flux_target is None:
+                return False
+            target = dict(mode='jobid', scheduler='flux', jobid=self.flux_target[1])
         else:
             target = dict(mode='attach', remote_host=self.options['Remote Host'], pid=self.options['PID'])
         return self.attach_target(attach_dialog, target, jobid)
@@ -552,8 +656,11 @@ class RemoteGUI:
                 self.update_attach_options()
                 self.update_sample_options()
 
-            if jobid and self.options['Resource Manager'] == 'Slurm':
+            if jobid and self.options['Resource Manager'] == 'Flux':
+                self._use_flux_instance(self.flux_target[0])
+            elif jobid and self.options['Resource Manager'] == 'Slurm':
                 self.prepare_slurm_launcher(jobid, target['remote_host'], target['pid'])
+
             params = self.get_remote_params()
             if params['backend'] == 'gdb' and self.options['GDB Path'].strip():
                 params['gdb_path'] = self.options['GDB Path'].strip()
@@ -575,7 +682,7 @@ class RemoteGUI:
         """Recheck the selected launcher through the route used for this attach."""
         from remote.stat_client_slurm import check_launcher, resolve_on_login
         args = self.remote_args
-        if not args.remote_server_host and not args.flux_allocation and self.remote.health['hostname'] != host:
+        if not args.remote_server_host and self.remote.health['hostname'] != host:
             client = self._run('Selecting server host…', resolve_on_login, self.remote.client, jobid, (host, pid))
             self.connect_client(client)
         else:

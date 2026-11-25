@@ -61,6 +61,35 @@ SSH_CLEANUP_WAIT_SECONDS = 2
 RESPONSE_POLL_INTERVAL_SECONDS = 0.05
 
 
+def flux_job_key(row):
+    """Qualify nested application IDs with the allocation that owns them."""
+    if row.get('allocation'):
+        return row['allocation'] + '/' + row['jobid']
+    return row['jobid']
+
+
+def resolve_flux_job(rows, jobid):
+    """Match a running application by ID or allocation/application pair."""
+    # Flux prints f58 IDs with either an ASCII f or ƒ. Decimal input is also accepted.
+    jobid = jobid.replace('ƒ', 'f')
+
+    matches = []
+    for row in rows:
+        app = row['jobid'].replace('ƒ', 'f')
+        qualified = flux_job_key(row).replace('ƒ', 'f')
+        if jobid in (app, row['id'], qualified):
+            matches.append(row)
+
+    if len(matches) == 1:
+        return matches[0]
+
+    if matches:
+        choices = ', '.join(flux_job_key(row) for row in matches)
+        raise RuntimeError('Ambiguous Flux job ID %s. Choose one of: %s' % (jobid, choices))
+
+    raise RuntimeError('No running Flux application matches %s. List the running jobs and check the application ID.' % jobid)
+
+
 class StatRemoteClientError(Exception):
     """A structured error returned by the server, retaining its diagnostic fields."""
 
@@ -116,6 +145,7 @@ class StatRemoteClient(object):
         """Configure SSH; the server starts lazily on the first request."""
         client = cls([], remote_login, ssh_options, remote_prefix,
                      remote_server_host)
+        client.flux_allocation = flux_allocation
         if flux_allocation is not None:
             # the server wrapper loads its runtime environment before calling flux proxy.
             remote_command = "%s --flux-allocation %s" % (remote_command, shlex.quote(flux_allocation))

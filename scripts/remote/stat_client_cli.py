@@ -12,6 +12,7 @@ Connection options:
     --remote-server-host HOST      Optional second SSH hop from the remote login (only needed to connect with compute nodes directly).
 
 Commands:
+    list-jobs                     List running Slurm or Flux applications as JSON.
     status                        Report STAT server side version and supported backends.
     sample-process PID            Sample given job launcher by PID, or one process with --serial.
     sample-job JOBID              Discover the launcher by job ID (e.g. slurm) and sample its ranks.
@@ -48,10 +49,11 @@ from __future__ import print_function
 import argparse
 import json
 import os
+import sys
 import tempfile
 from datetime import datetime
 
-from remote.stat_client_connection import StatRemoteClient, StatRemoteClientError
+from remote.stat_client_connection import StatRemoteClient, StatRemoteClientError, resolve_flux_job
 
 # the remote server checks which of these backends its build provides.
 SUPPORTED_BACKENDS = ("dyninst", "pystack", "gdb")
@@ -153,9 +155,8 @@ def common_sample_params(args):
     return params
 
 
-def main(argv=None):
-    """Run one SSH command and release the session and transport before returning."""
-    parser = argparse.ArgumentParser(description="Drive STAT remote connect server without opening stat-gui.")
+def add_connection_arguments(parser):
+    """Register SSH options for the remote CLI and headless GUI listing."""
     parser.add_argument("--remote-login", required=True, help="SSH login to cluster head node, e.g. user@login-node")
     parser.add_argument("--remote-server-host",
                         help="run the server through a second SSH hop from --remote-login")
@@ -164,9 +165,59 @@ def main(argv=None):
     parser.add_argument("--remote-prefix", help="Path on cluster head node to STAT installation directory")
     parser.add_argument("--ssh-option", action="append", default=[], help="extra ssh option/argument; repeat for multiple args")
 
+
+def add_listing_arguments(parser):
+    """Register the scheduler preference for job listing."""
+    parser.add_argument("--scheduler", choices=("slurm", "flux"),
+                         help="scheduler to list (default: check for Slurm, then Flux on the server)")
+
+
+def wants_job_list(argv):
+    """Recognize a GUI listing request before loading GTK."""
+    if "--" in argv:
+        argv = argv[:argv.index("--")]
+    listing = {"--list-jobs", "list-jobs"}
+    if listing.isdisjoint(argv):
+        return False
+
+    # let the GUI parser consume its option values, including a host or path named list-jobs.
+    from remote.stat_client_gui import add_gui_arguments
+    parser = argparse.ArgumentParser(add_help=False)
+    add_gui_arguments(parser, version=None)
+    gui, remaining = parser.parse_known_args(argv)
+
+    if gui.create is not None or gui.serial is not None:
+        return False
+    return not listing.isdisjoint(remaining)
+
+
+def gui_list_jobs(argv, prog="stat-gui"):
+    """List remote jobs without loading GTK."""
+    parser = argparse.ArgumentParser(prog=prog + " --list-jobs", description="List running remote jobs as JSON.")
+    parser.add_argument("listing_command", nargs="?", choices=("list-jobs",), help=argparse.SUPPRESS)
+    parser.add_argument("--list-jobs", action="store_true", help=argparse.SUPPRESS)
+    add_connection_arguments(parser)
+    add_listing_arguments(parser)
+    parser.set_defaults(command="list-jobs")
+    return run_command(parser.parse_args(argv), parser)
+
+
+def main(argv=None):
+    """Run one SSH command and release the session and transport before returning."""
+    argv = sys.argv[1:] if argv is None else argv
+    if "--list-jobs" in argv:
+        return gui_list_jobs(argv, prog="stat-gui-remote-cli")
+
+    parser = argparse.ArgumentParser(description="Drive STAT remote connect server without opening stat-gui.")
+    add_connection_arguments(parser)
+    parser.epilog = "Use --list-jobs [--scheduler slurm|flux] to list running jobs."
+
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("status", help="show server version and supported backends")
+
+    listing = subparsers.add_parser("list-jobs", help="list your running Slurm or Flux jobs as JSON")
+    add_listing_arguments(listing)
 
     # scheduler selection applies only to job-ID discovery, not PID-based sampling.
     sample_job = subparsers.add_parser("sample-job", help="sample ranks belonging to a scheduler job")
@@ -230,24 +281,42 @@ def main(argv=None):
     if args.command is None:
         parser.error("a command is required")
 
-    if args.command != "status" and args.backend != "pystack" and (args.native or args.with_children):
+    sampling = args.command in ("sample-process", "sample-job")
+    if sampling and args.backend != "pystack" and (args.native or args.with_children):
         parser.error("--native and --with-children require --backend pystack")
 
-    if args.command != "status" and args.cuda_quick and (args.backend != "gdb" or not args.with_threads):
+    if sampling and args.cuda_quick and (args.backend != "gdb" or not args.with_threads):
         parser.error("--cuda-quick requires --backend gdb --with-threads")
 
-    if args.command != "status" and args.trace_frequency is not None and args.trace_frequency < 0:
+    if sampling and args.trace_frequency is not None and args.trace_frequency < 0:
         parser.error("--trace-frequency must be nonnegative")
 
-    if args.command != "status" and args.remote_log_dir is not None and not os.path.isabs(args.remote_log_dir):
+    if sampling and args.remote_log_dir is not None and not os.path.isabs(args.remote_log_dir):
         parser.error("--remote-log-dir must be an absolute path on the cluster")
 
+    return run_command(args, parser)
+
+
+def run_command(args, parser):
+    """Run one parsed command and close its SSH connection."""
     # one connection owns this command; close it even after a server or sampling error.
     client = build_client(args)
     output_dir = None
     try:
-        client.ensure_remote_server()
+        if args.command == "list-jobs":
+            # pass an explicit scheduler through, or let the server choose unless scoped to Flux.
+            scheduler = args.scheduler or ("flux" if args.flux_allocation else "auto")
+            if args.flux_allocation and scheduler != "flux":
+                parser.error("--flux-allocation requires Flux job listing")
 
+            # keep the architecture check and skip the health request that probes both schedulers.
+            if args.remote_prefix:
+                client.check_remote_prefix_architecture(args.remote_prefix)
+
+            print_json(client.request("jobs.list", {"scheduler": scheduler, "recursive": not args.flux_allocation}))
+            return 0
+
+        client.ensure_remote_server()
         if args.command == "status":
             print_json(client.request("health"))
         elif args.command in ("sample-job", "sample-process"):
@@ -258,6 +327,17 @@ def main(argv=None):
                 parser.error("--samples must be positive")
 
             if args.command == "sample-job":
+                if args.scheduler == "flux" and not args.flux_allocation and "job_schedulers" in client.remote_health:
+                    rows = client.request("jobs.list", {"scheduler": "flux"})["jobs"]
+                    job = resolve_flux_job(rows, args.jobid)
+                    allocation, args.jobid = job.get('allocation'), job['jobid']
+
+                    if allocation:
+                        client.close()
+                        args.flux_allocation = allocation
+                        client = build_client(args)
+                        client.ensure_remote_server()
+
                 params.update({"mode": "jobid", "jobid": args.jobid, "scheduler": args.scheduler})
             elif args.pid <= 0:
                 parser.error("pid must be positive")

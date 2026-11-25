@@ -112,11 +112,12 @@ STAT installation directory specified by `--remote-prefix` on the cluster.
 
 If you open the standalone GUI without an SSH login, **Attach** prompts you to restart it with the command above.
 
-With `--remote-login`, STAT opens the classic tabbed **Attach** dialog and lists running Slurm jobs under
-**Search for job by Resource Manager job ID**. The first batch job is selected when available.
-Choose a job in **Running Jobs** or enter its ID and click **Search for Job**. The **Current Process List**
-shows launcher PIDs and command lines on the resolved host. Select the launcher, choose the backend on
-**Sample Options**, and click **Attach** on the first tab to collect the first graph.
+With `--remote-login`, the **Attach** dialog lists the user's running jobs. The server checks for `squeue` and `flux` commands
+in its environment to detect shceduler. One can explicitly pass `--scheduler flux or slurm` or switch **Specify Resource Manager**
+in the dialog.
+
+For Slurm, choose a job or enter its ID and click **Search for Job**. The **Current Process List** shows launcher PIDs
+and commands on the resolved host. Select the launcher, choose the backend on **Sample Options**, and click **Attach**.
 
 The main window and Attach dialog show the SSH login and the current operation while a request is running.
 The status returns to **Ready** when the request finishes, or **Disconnected** if the SSH connection closes.
@@ -127,7 +128,6 @@ Collapse and reopen the section to include messages that arrived later.
 
 Use **Refresh Jobs** to find newly started jobs and **Refresh Process List** to look up the selected job again.
 
-If you start the standalone GUI without a login, click **Attach** to enter the SSH login and optional remote STAT prefix.
 Browsing requires a working STAT installation on the login host or the host supplied with `--remote-server-host`.
 
 You can also start with a known target:
@@ -137,21 +137,54 @@ stat-gui --remote-login user@launcher-host --remote-prefix /path/to/stat-install
 stat-gui --remote-login user@server --remote-prefix /path/to/stat-install --backend pystack --native --with-children -i -I SERIAL_PROC_PID
 ```
 
-To attach to a job in a Flux allocation, pass the allocation ID and the application job ID:
+With flux-core `0.83.0` or newer, the dropdown lists your running Flux applications, including those inside allocations.
+Nested entries show `ALLOCATION_ID/APPLICATION_JOB_ID`. Choose a row or enter an application ID and click **Search for Job**.
+If an ID occurs in multiple allocations, choose the qualified row. **Attach** starts the server in the owning allocation
+and samples the application. The login host's noninteractive SSH session must be able to run `flux jobs` successfully.
+
+To attach directly, supply both the allocation ID and the application job ID.
 
 ```bash
 stat-gui --remote-login user@login-host --remote-prefix /path/to/stat-install \
   --flux-allocation ALLOCATION_ID --remote-job APPLICATION_JOB_ID --scheduler flux
 ```
 
-The **Attach** dialog opens with the Flux job ID filled in. The process list stays empty because STAT starts a Flux
-attach helper on demand. Click **Attach** to start the helper and collect the first sample.
+The **Attach** dialog opens with the Flux job ID filled in. **Selected Flux Job** shows the application name and ID, its allocation when known,
+the nodes, and the task count reported by Flux. Click **Attach** to start the helper and collect the first sample.
 
 ![STAT Attach dialog with the Flux job ID filled in](src/figs/stat_remote_flux_attach.png)
 
 ## Using the Remote Connect CLI
 
 STAT remote client installation also provides CLI interface that can be used if needed for specific use cases.
+
+### List running jobs
+
+From the desktop, list your applications on the chosen scheduler. Each command prints a JSON object with a `jobs` array.
+
+```bash
+stat-gui-remote-cli --remote-login user@login-host --remote-prefix /opt/stat --list-jobs
+stat-gui-remote-cli --remote-login user@login-host --remote-prefix /opt/stat --list-jobs --scheduler flux
+```
+
+By default, STAT checks for `squeue` on the server and uses Slurm if available. Otherwise, it checks for `flux`.
+You can specify `--scheduler slurm` or `--scheduler flux` to query only that scheduler.
+
+You can also print the same list from `stat-gui` without opening a window.
+
+```bash
+stat-gui --remote-login user@login-host --remote-prefix /opt/stat --list-jobs --scheduler flux
+```
+
+Automatic Flux job discovery requires flux-core 0.83.0 or newer on the cluster. For a nested application, the row includes
+its owning `allocation`. Use the application's `jobid` directly:
+
+```bash
+stat-gui-remote-cli --remote-login user@login-host --remote-prefix /opt/stat sample-job APPLICATION_JOB_ID --scheduler flux
+```
+
+If several instances contain the same ID, use the returned allocation/application pair or specify
+`--flux-allocation ALLOCATION_ID` before the subcommand. With an explicit allocation, `sample-job` attaches directly and `list-jobs` lists only that instance.
 
 ### Check your connection
 
@@ -304,7 +337,7 @@ rank PIDs or call discovery commands first.
 `sample-job JOBID --scheduler slurm` selects Slurm explicitly. The default `--scheduler auto` detects available launcher
 commands on the server and requires explicit selection when detection is missing or ambiguous. Job IDs remain strings.
 Schedulers like `lsf` and `alps` reuse STAT's existing helpers and have not been cluster-tested here.
-Job listing currently supports Slurm.
+The GUI can list Slurm and Flux jobs.
 
 This run sampled four ranks across two Slurm nodes.
 

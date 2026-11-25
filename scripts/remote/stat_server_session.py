@@ -46,6 +46,7 @@ from __future__ import print_function
 import os
 import pwd
 import socket
+import shutil
 import sys
 import time
 import uuid
@@ -54,7 +55,7 @@ import ctypes
 from stat_build_info import STAT_VERSION, GIT_COMMIT, GIT_DIRTY
 
 from remote import stat_server_helpers as attach_helper
-from remote.stat_server_flux import FluxDebugHelper
+from remote.stat_server_flux import FluxDebugHelper, list_flux_jobs
 from STAThelper import get_proctab, var_spec_to_string
 
 if hasattr(sys, "getdlopenflags"):
@@ -849,15 +850,30 @@ class StatSessionController(object):
             "git_dirty": GIT_DIRTY,
             "cuda_quick": STAT_SAMPLE_CUDA_QUICK is not None,
             "supported_backends": list(SUPPORTED_BACKENDS),
+            "job_schedulers": [name for name, command in (("slurm", "squeue"), ("flux", "flux"))
+                               if shutil.which(command)],
         }
 
     def jobs_list(self, params):
-        """List jobs for interactive selection; listing currently supports Slurm only."""
-        if _scheduler(params) != "slurm":
-            raise StatRemoteError("unsupported_operation", "Job listing currently supports Slurm only", "list")
+        """List the current user's running jobs for the Attach dialog."""
+        scheduler = _str(params, "scheduler", "auto").lower()
+        # only auto checks for available commands, with Flux used when squeue is missing.
+        if scheduler == "auto":
+            if shutil.which("squeue"):
+                scheduler = "slurm"
+            elif shutil.which("flux"):
+                scheduler = "flux"
+            else:
+                raise StatRemoteError("job_list_failed", "Neither squeue nor flux was found on the server", "list")
+
         user = pwd.getpwuid(os.geteuid()).pw_name
         try:
-            jobs = attach_helper.list_jobs("Slurm", user)
+            if scheduler == "flux":
+                jobs = list_flux_jobs(user, _bool(params, "recursive", True))
+            elif scheduler == "slurm":
+                jobs = attach_helper.list_jobs("Slurm", user)
+            else:
+                raise StatRemoteError("unsupported_operation", "Job listing supports Slurm and Flux", "list")
         except RuntimeError as exc:
             raise StatRemoteError("job_list_failed", str(exc), "list") from exc
         return {"jobs": jobs}
