@@ -102,6 +102,7 @@ try:
 except:
     HAVE_PSUTIL = False
 import subprocess
+import shutil
 HAVE_COMMANDS=True
 try:
     import commands
@@ -171,8 +172,119 @@ if has_gtk == False:
         raise Exception('%s\n%s\nThere was a problem loading the gtk module.\n' % (repr(import_error), repr(e2)))
 
 
+class RunningJobPicker:
+    """Shared Attach-dialog controls for browsing, editing and refreshing scheduler jobs."""
+
+    def setup_job_picker(self, box, frame, dialog):
+        """Build the Running Jobs row and connect it to the scheduler and Job ID fields."""
+        self.running_jobs = gtk.ComboBoxText()
+        refresh = gtk.Button('Refresh Jobs')
+        row = gtk.HBox()
+        row.pack_start(gtk.Label('Running Jobs'), False, False, 5)
+        row.pack_start(self.running_jobs, True, True, 5)
+        row.pack_start(refresh, False, False, 5)
+
+        box.pack_start(row, False, False, 0)
+        box.reorder_child(row, 0)
+        row.show_all()
+        row.set_no_show_all(True)
+
+        def edit_job(entry):
+            """Clear the previous attach target when the job ID changes."""
+            if self.job_picker_scheduler():
+                self.clear_launcher(frame)
+                if self.running_jobs.get_active_id() != entry.get_text().strip():
+                    self.running_jobs.set_active(-1)
+
+        def select_job(combo):
+            """Resolve the selected row as if the user had entered its job ID."""
+            if combo.get_active_id():
+                self.jobid_entry.set_text(combo.get_active_id())
+                self.on_update_job_id(combo, frame, dialog, self.jobid_entry)
+
+        def change_scheduler(combo):
+            """Clear the old job and show the job list or process search for the new scheduler."""
+            self.options['Resource Manager'] = combo.get_active_text()
+            self.options['Job ID'] = ''
+            self.jobid_entry.set_text('')
+
+            row.set_visible(bool(self.job_picker_scheduler()))
+            if self.job_picker_scheduler():
+                self.refresh_jobs(frame, dialog)
+            else:
+                # other local resource managers use the existing process search.
+                self.clear_launcher(frame)
+                frame.set_label('Current Process List')
+                self.on_update_process_listing(None, frame, dialog, self.filter_entry)
+
+        self.jobid_entry.connect('changed', edit_job)
+        self.running_jobs.connect('changed', select_job)
+        refresh.connect('clicked', lambda w: self.refresh_jobs(frame, dialog))
+        self.combo_boxes['Resource Manager'].connect('changed', change_scheduler)
+
+        if self.job_picker_scheduler():
+            self.refresh_jobs(frame, dialog, initial=True)
+        else:
+            row.hide()
+
+    def refresh_jobs(self, frame, dialog, initial=False):
+        """Keep the previous selection if it is still running, otherwise prefer the first batch job."""
+        from remote.stat_client_connection import flux_job_key
+
+        scheduler = self.job_picker_scheduler()
+        previous = self.jobid_entry.get_text().strip()
+
+        self.clear_launcher(frame)
+        frame.set_label('Selected Flux Job' if scheduler == 'Flux' else 'Current Process List')
+        self.running_jobs.remove_all()
+        self.flux_rows = {}
+
+        dialog.set_sensitive(False)
+        try:
+            rows = self._list_running_jobs(scheduler.lower())
+
+            # list batch jobs first and include the Flux allocation ID to distinguish jobs with the same ID.
+            for job in sorted(rows, key=lambda job: not job.get('is_batch', True)):
+                key = job['jobid']
+                if scheduler == 'Flux':
+                    key = flux_job_key(job)
+                    self.flux_rows[key] = job
+
+                self.running_jobs.append(key, '  '.join((key, job['name'], job['nodelist'])))
+        except Exception as exc:
+            # older remote servers can attach to an explicit Flux target even if listing fails.
+            if scheduler == 'Flux' and getattr(self.remote_args, 'flux_allocation', None) and previous:
+                self.on_update_job_id(None, frame, dialog, self.jobid_entry)
+            else:
+                self.show_job_status(frame, str(exc))
+            return
+        finally:
+            dialog.set_sensitive(True)
+
+        # restore the previous job if it is still listed. Selecting its row also updates the attach target.
+        if previous and self.running_jobs.set_active_id(previous):
+            return
+
+        # on opening, look up an explicitly requested job ID even if it is absent from the list.
+        if initial and previous:
+            self.on_update_job_id(None, frame, dialog, self.jobid_entry)
+        elif rows:
+            self.running_jobs.set_active(0)
+        else:
+            self.jobid_entry.set_text('')
+            self.show_job_status(frame, 'No running %s jobs.' % scheduler)
+
+    def show_job_status(self, frame, message):
+        """Display job discovery instructions or an error in the process list."""
+        label = gtk.Label(message)
+        label.set_selectable(True)
+        label.set_line_wrap(True)
+        frame.add(label)
+        label.show()
+
+
 ## The STATGUI window adds STAT operations to the STATview window.
-class STATGUI(STATDotWindow):
+class STATGUI(RunningJobPicker, STATDotWindow):
     """The STATGUI window adds STAT operations to the STATview window."""
 
     supports_cuda_quick = HAVE_GDB_SUPPORT
@@ -204,6 +316,10 @@ class STATGUI(STATDotWindow):
         remote_requested = getattr(args, 'remote_login', None) or not HAVE_NATIVE_STAT
         self.STAT = STAT_FrontEnd() if not remote_requested else None
         self.remote_args = args
+        self.local_slurm_jobid = None
+        self.local_flux_target = None
+        self.local_flux_helper = None
+        self.original_flux_uri = None
         self.properties_window = None
         self.proctab_file_path = None
         self.proctab = None
@@ -765,8 +881,11 @@ host[1-10,12,15-20];otherhost[30]
         pid_list = ''
         if listing_filter is not None:
             filter_compiled_re = re.compile(listing_filter.get_text())
+        if is_parallel and self.local_slurm_jobid:
+            return self.show_local_slurm_launchers(attach_dialog, vbox, my_rsh, listing_filter)
         if HAVE_ATTACH_HELPER and self.options['Job ID'] != '':
-            self.options['Remote Host'], rm_exe, pids = attach_helper.jobid_to_hostname_pid(self.options['Resource Manager'], self.options['Job ID'], my_rsh)
+            scheduler = self.job_picker_scheduler() or self.options['Resource Manager']
+            self.options['Remote Host'], rm_exe, pids = attach_helper.jobid_to_hostname_pid(scheduler, self.options['Job ID'], my_rsh)
             self.options['Job Launcher'] = rm_exe
             if self.options['Remote Host'] == None:
                 show_error_dialog('Failed to find host for job ID %s' % self.options['Job ID'], attach_dialog)
@@ -888,6 +1007,10 @@ host[1-10,12,15-20];otherhost[30]
             vbox.pack_start(radio_button, False, False, 0)
 
     def _on_update_process_listing(self, widget, frame, attach_dialog, listing_filter=None):
+        """Replace the previous target display with the current list of parallel launchers."""
+        if frame.get_label() == 'Selected Flux Job':
+            self.clear_launcher(frame)
+            frame.set_label('Current Process List')
         vbox = gtk.VBox()
         self._on_update_process_listing2(attach_dialog, listing_filter, vbox, True)
         try:
@@ -917,14 +1040,165 @@ host[1-10,12,15-20];otherhost[30]
 
     def on_update_job_id(self, w, frame, attach_dialog, entry):
         """Callback to search a job id for resource manager processes."""
-        self.options['Job ID'] = entry.get_text()
-        entry.set_text(self.options['Job ID'])
         self.options['Resource Manager'] = self.types['Resource Manager'][self.combo_boxes['Resource Manager'].get_active()]
+        scheduler = self.job_picker_scheduler()
+        if scheduler == 'Flux':
+            self.select_local_flux_job(entry.get_text().strip(), frame, attach_dialog)
+            return
+        if scheduler == 'Slurm':
+            self.local_slurm_jobid = entry.get_text().strip()
+            self.options['Job ID'] = ''
+        else:
+            self.options['Job ID'] = entry.get_text()
         self.on_update_process_listing(w, frame, attach_dialog, None)
 
 
+    def show_local_slurm_launchers(self, dialog, box, shell, listing_filter):
+        """Resolve the selected Slurm job first so other jobs on the same host are excluded."""
+        from remote.stat_server_helpers import get_remote_process_details, jobid_to_hostname_pid
+
+        self.options['PID'] = None
+        self.options['Launcher Exe'] = ''
+        jobid = self.local_slurm_jobid
+
+        try:
+            host, executable, pids = jobid_to_hostname_pid('slurm', jobid, shell)
+            # fetch command lines for this job's launcher PIDs so the user can tell them apart in the list.
+            details = get_remote_process_details(shell, host, pids)
+        except RuntimeError as exc:
+            show_error_dialog(str(exc), dialog)
+            return False
+
+        processes = [(row['pid'], row['command_line']) for row in details if row['command_line'].strip()]
+        if not processes:
+            show_error_dialog('No running launcher found for Slurm job %s.' % jobid, dialog)
+            return False
+
+        self.options['Remote Host'] = host
+        self.options['Job Launcher'] = executable
+        self.rh_entry.set_text(host)
+
+        if listing_filter is not None:
+            pattern = re.compile(listing_filter.get_text())
+            full_command = self.options['Filter Full Command Line']
+            processes = [(pid, cmd) for pid, cmd in processes
+                         if pattern.search(cmd if full_command else cmd.split()[0])]
+
+        self.pack_process_list(box, processes, True)
+
+    def job_picker_scheduler(self):
+        """Choose the scheduler for local job listing or return None."""
+        scheduler = self.options['Resource Manager']
+        if scheduler in ('Auto', 'Slurm') and shutil.which('squeue'):
+            return 'Slurm'
+        if scheduler in ('Auto', 'Flux') and shutil.which('flux'):
+            return 'Flux'
+        return None
+
+    def _list_running_jobs(self, scheduler):
+        """Query the local scheduler for jobs owned by the current user."""
+        from remote.stat_server_flux import list_flux_jobs
+        from remote.stat_server_slurm import list_slurm_jobs
+        import pwd
+
+        user = pwd.getpwuid(os.geteuid()).pw_name
+        return list_flux_jobs(user) if scheduler == 'flux' else list_slurm_jobs(user)
+
+    def select_local_flux_job(self, jobid, frame, dialog):
+        """Look up a typed job ID across Flux allocations."""
+        from remote.stat_client_connection import resolve_flux_job
+
+        try:
+            if self.running_jobs.get_active_id() == jobid and jobid in self.flux_rows:
+                job = self.flux_rows[jobid]
+            else:
+                job = resolve_flux_job(self._list_running_jobs('flux'), jobid)
+        except RuntimeError as exc:
+            show_error_dialog(str(exc), dialog)
+            return
+        self.display_local_flux_job(job, frame)
+
+    def clear_launcher(self, frame):
+        """Discard the selected job and launcher PID, and clear the target shown in the dialog."""
+        self.local_slurm_jobid = None
+        self.local_flux_target = None
+        self.options['PID'] = None
+        child = frame.get_child()
+        if child is not None:
+            frame.remove(child)
+            if child is getattr(self, 'sw', None):
+                self.sw = None
+
+    def display_local_flux_job(self, job, frame):
+        """Show the selected Flux application and save it for Attach to start its debug helper."""
+        self.clear_launcher(frame)
+        self.local_flux_target = job
+        frame.set_label('Selected Flux Job')
+        self.show_flux_job(frame, job, job.get('allocation'))
+
+    def start_local_flux_helper(self):
+        """Resolve the allocation and pass its debug launcher PID to native STAT."""
+        from remote.stat_server_flux import FluxDebugHelper
+
+        job = self.local_flux_target
+        if job.get('allocation'):
+            result = subprocess.run(['flux', 'uri', '--', job['allocation']],
+                                    capture_output=True, text=True, check=True, timeout=30)
+            uri = result.stdout.strip()
+            if not uri:
+                raise RuntimeError('Flux returned no URI for allocation %s' % job['allocation'])
+            # launchmon must use the same Flux instance as the debug launcher.
+            self.original_flux_uri = (os.environ.get('FLUX_URI'),)
+            os.environ['FLUX_URI'] = uri
+
+        self.local_flux_helper = FluxDebugHelper(job['jobid'])
+        self.local_flux_helper.start()
+        self.options['PID'] = self.local_flux_helper.pid
+        self.options['Remote Host'] = 'localhost'
+        self.options['Launcher Exe'] = 'flux-job'
+
+    def close_local_flux_helper(self):
+        """Stop the debug launcher and restore the GUI's original Flux connection."""
+        try:
+            if self.local_flux_helper is not None:
+                self.local_flux_helper.close()
+        finally:
+            self.local_flux_helper = None
+            if self.original_flux_uri is not None:
+                original_uri, = self.original_flux_uri
+                self.original_flux_uri = None
+                if original_uri is None:
+                    os.environ.pop('FLUX_URI', None)
+                else:
+                    os.environ['FLUX_URI'] = original_uri
+
+    def show_flux_job(self, frame, job, allocation):
+        """Display the selected Flux job in the Attach dialog."""
+        # Flux starts the debugger on Attach, so show the job details until a launcher PID exists.
+        app = job['jobid']
+        if job.get('name'):
+            app = '%s (%s)' % (job['name'], app)
+
+        fields = [
+            ('Application', app),
+            ('Allocation', allocation),
+            ('Nodes', job.get('nodelist')),
+            ('Tasks', job.get('ntasks')),
+        ]
+
+        grid = gtk.Grid(column_spacing=12, row_spacing=3, margin=6)
+        for index, (title, value) in enumerate(fields):
+            if value is not None and value != '':
+                grid.attach(gtk.Label(label=title, xalign=0), 0, index, 1, 1)
+                grid.attach(gtk.Label(label=str(value), xalign=0, selectable=True), 1, index, 1, 1)
+
+        grid.attach(gtk.Label(label="Click Attach to sample this application's ranks.", xalign=0), 0, len(fields), 2, 1)
+        frame.add(grid)
+        grid.show_all()
+
     def on_update_remote_host(self, w, frame, attach_dialog, entry):
         """Callback to search a remote host for processes."""
+        self.local_slurm_jobid = None
         self.options['Remote Host'] = entry.get_text()
         entry.set_text(self.options['Remote Host'])
         self.on_update_process_listing(w, frame, attach_dialog, self.filter_entry)
@@ -1100,16 +1374,30 @@ host[1-10,12,15-20];otherhost[30]
         return self.show_attach_dialog()
 
     def show_attach_dialog(self, remote=False):
+        """Open the Attach dialog with job and process controls for the active connection mode."""
+        self.local_slurm_jobid = None
+        self.local_flux_target = None
+
+        # local discovery uses commands on this host. Remote discovery uses the server's scheduler list.
+        if not remote and shutil.which('flux') and 'Flux' not in self.types['Resource Manager']:
+            self.types['Resource Manager'].append('Flux')
+
+        requested_scheduler = getattr(self.remote_args, 'scheduler', 'auto').title()
+        if not remote and requested_scheduler in self.types['Resource Manager'] and requested_scheduler != 'Auto':
+            self.options['Resource Manager'] = requested_scheduler
+
         self.options['PID'] = None
         self.options['Launcher Exe'] = ''
         self.options['Serial PID'] = None
         self.options['Serial Exe'] = ''
+
         attach_dialog = gtk.Dialog('Attach', self)
         attach_dialog.set_default_size(400, 400)
         if remote:
             attach_dialog.set_modal(True)
             # keep the dialog alive while a pending server request can still update it.
             attach_dialog.connect("delete-event", lambda *args: self.remote_busy)
+
         notebook = gtk.Notebook()
         notebook.set_tab_pos(gtk.POS_TOP)
         notebook.set_scrollable(False)
@@ -1123,7 +1411,8 @@ host[1-10,12,15-20];otherhost[30]
         self.jobid_entry = self.pack_entry_and_button(self.options['Job ID'], self.on_update_job_id, process_frame, attach_dialog, "Search for Job", hbox, True, True, 0)
         hbox.pack_start(gtk.VSeparator(), False, False, 5)
         self.pack_combo_box(hbox, 'Resource Manager')
-        # to add a Running Jobs row above the Job ID field.
+
+        # the job picker inserts its Running Jobs row above the manual Job ID search.
         rm_box = gtk.VBox()
         rm_box.pack_start(hbox, False, False, 0)
         self.rm_expander.add(rm_box)
@@ -1133,9 +1422,11 @@ host[1-10,12,15-20];otherhost[30]
         hbox = gtk.HBox()
         self.rh_entry = self.pack_entry_and_button(self.options['Remote Host'], self.on_update_remote_host, process_frame, attach_dialog, "Search Remote Host", hbox)
         self.hn_expander.add(hbox)
-        self.hn_expander.set_expanded(not remote)
+
+        # open hostname search by default when local job discovery is unavailable.
+        self.hn_expander.set_expanded(not remote and not self.job_picker_scheduler())
         self.hn_expander.set_sensitive(not remote)
-        self.rm_expander.set_expanded(remote)
+        self.rm_expander.set_expanded(remote or bool(self.job_picker_scheduler()))
         vbox.pack_start(self.hn_expander, False, False, 0)
 
         # only local attach switches between job and hostname searches; remote attach disables hostname search.
@@ -1148,18 +1439,21 @@ host[1-10,12,15-20];otherhost[30]
         self.pack_combo_box(hbox, 'Remote Host Shell')
         hbox.set_sensitive(not remote)
         vbox.pack_start(hbox, False, False, 0)
+
         vbox.pack_start(process_frame, True, True, 0)
         self.pack_check_button(vbox, 'Filter Full Command Line', False, False, 5)
         hbox = gtk.HBox()
         hbox.pack_start(gtk.Label('Filter Process List'), False, False, 5)
         self.filter_entry = self.pack_entry_and_button(self.options['Job Launcher'], self.on_update_process_listing, process_frame, attach_dialog, "Filter", hbox, True, True, 0)
         vbox.pack_start(hbox, False, False, 0)
+
         hbox = gtk.HBox()
         button = gtk.Button("Refresh Process List")
         button.connect("clicked", lambda w: self.on_update_process_listing(w, process_frame, attach_dialog, self.filter_entry))
         hbox.pack_start(button, True, True, 10)
         vbox.pack_start(hbox, False, False, 0)
         vbox.pack_start(gtk.HSeparator(), False, False, 10)
+
         hbox = gtk.HBox()
         button = gtk.Button(stock=gtk.STOCK_CANCEL)
         button.connect("clicked", lambda w: self.on_cancel_attach(w, attach_dialog))
@@ -1212,16 +1506,19 @@ host[1-10,12,15-20];otherhost[30]
         hbox.pack_start(gtk.Label('Filter Process List'), False, False, 5)
         self.serial_filter_entry = self.pack_entry_and_button("", self.on_update_serial_process_listing, serial_process_frame, attach_dialog, "Filter", hbox, True, True, 0)
         vbox.pack_start(hbox, False, False, 0)
+
         hbox = gtk.HBox()
         button = gtk.Button("Refresh Process List")
         button.connect("clicked", lambda w: self.on_update_serial_process_listing(w, serial_process_frame, attach_dialog, self.serial_filter_entry))
         hbox.pack_start(button, False, False, 10)
         button = gtk.Button("Add Process to Attach List")
         hbox.pack_start(button, True, True, 10)
+
         if remote:
-            # Remote serial attach accepts explicit host:PID entries.
+            # disable process browsing but leave the Attach List editable for explicit host:PID entries.
             for child in vbox.get_children() + [hbox]:
                 child.set_sensitive(False)
+
         self.serial_process_list_entry = gtk.Entry()
         self.serial_process_list_entry.set_max_length(8192)
         self.serial_process_list_entry.set_text(self.options['Serial Process List'])
@@ -1234,6 +1531,7 @@ host[1-10,12,15-20];otherhost[30]
         hbox.pack_start(self.serial_process_list_entry, True, True, 0)
         vbox.pack_start(hbox, False, False, 0)
         vbox.pack_start(gtk.HSeparator(), False, False, 10)
+
         hbox = gtk.HBox()
         button = gtk.Button(stock=gtk.STOCK_CANCEL)
         button.connect("clicked", lambda w: self.on_cancel_attach(w, attach_dialog))
@@ -1318,6 +1616,7 @@ host[1-10,12,15-20];otherhost[30]
             vbox2.pack_start(gtk.Label('PyStack (not built)'), False, False, 0)
         frame.add(vbox2)
         vbox.pack_start(frame, False, False, 5)
+
         frame = gtk.Frame(label='Debug Logs')
         vbox2 = gtk.VBox()
         self.pack_check_button(vbox2, 'Log Frontend')
@@ -1329,6 +1628,7 @@ host[1-10,12,15-20];otherhost[30]
         self.pack_check_button(vbox2, 'Use MRNet Printf')
         frame.add(vbox2)
         vbox.pack_start(frame, False, False, 5)
+
         frame = gtk.Frame(label='Misc')
         vbox2 = gtk.VBox()
         self.pack_combo_box(vbox2, 'Verbosity Type')
@@ -1345,12 +1645,19 @@ host[1-10,12,15-20];otherhost[30]
 
         attach_dialog.vbox.pack_start(notebook, True, True, 0)
         attach_dialog.show_all()
-        # remote attach starts with a scheduler job, while local attach lists launcher and serial processes.
+
+        # remote attach uses server job discovery. Local attach also supports browsing processes directly.
         if remote:
             self.setup_job_picker(rm_box, process_frame, attach_dialog, attach_button)
         else:
-            self.on_update_process_listing(None, process_frame, attach_dialog, self.filter_entry)
+            if shutil.which('squeue') or 'Flux' in self.types['Resource Manager']:
+                self.setup_job_picker(rm_box, process_frame, attach_dialog)
+
+            # fall back to the process list when the selected scheduler has no job picker.
+            if not self.job_picker_scheduler():
+                self.on_update_process_listing(None, process_frame, attach_dialog, self.filter_entry)
             self.on_update_serial_process_listing(None, serial_process_frame, attach_dialog, self.serial_filter_entry)
+
         attach_dialog.run()
         if remote:
             attach_dialog.destroy()
@@ -1475,6 +1782,25 @@ host[1-10,12,15-20];otherhost[30]
             attach_dialog.hide()
         stat_wait_dialog.update_progress_bar(0.01)
         self.update_attach_options()
+        if launch or serial:
+            # the Launch and Serial Attach tabs supply their own targets. Discard any job selected on the Attach tab.
+            self.local_flux_target = None
+        elif self.local_flux_target is not None:
+            # native STAT needs the PID of the 'flux job attach --debug' helper for the selected job.
+            self.options['PID'] = None
+
+            # if startup fails, stop any helper that started and restore the previous FLUX_URI.
+            try:
+                self.start_local_flux_helper()
+            except subprocess.CalledProcessError as exc:
+                self.close_local_flux_helper()
+                show_error_dialog('Cannot resolve Flux allocation: %s' % (exc.stderr.strip() or exc), self)
+                return False
+            except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+                self.close_local_flux_helper()
+                show_error_dialog('Cannot attach to Flux job: %s' % exc, self)
+                return False
+
         if self.options['Check Node Access'] == True:
             os.environ['STAT_CHECK_NODE_ACCESS'] = '1'
         if self.STAT is None:
@@ -1643,10 +1969,12 @@ host[1-10,12,15-20];otherhost[30]
         self.proctab_file_path = None
         self.proctab = None
         if self.STAT is None:
+            self.close_local_flux_helper()
             self.attached = False
             self.set_action_sensitivity('detached' if self.reattach else 'new')
             return STAT_OK
         if self.attached is False:
+            self.close_local_flux_helper()
             self.STAT = None
             self.reattach = False
             return True
@@ -1676,6 +2004,7 @@ host[1-10,12,15-20];otherhost[30]
             self.on_fatal_error()
             return False
         self.STAT.shutDown()
+        self.close_local_flux_helper()
         self.STAT = None
         self.reattach = True
         self.attached = False
@@ -1690,6 +2019,7 @@ host[1-10,12,15-20];otherhost[30]
                     sys.stderr.write('Failed to detach from application:\n%s\n' % self.STAT.getLastErrorMessage())
                 self.STAT.shutDown()
             self.STAT = None
+        self.close_local_flux_helper()
         gtk.main_quit()
 
     def on_pause(self, action=None):
@@ -2574,6 +2904,7 @@ host[1-10,12,15-20];otherhost[30]
         """Handle fatal error."""
         self.set_action_sensitivity('new')
         self.STAT.shutDown()
+        self.close_local_flux_helper()
         self.STAT = None
         self.reattach = False
         self.attached = False

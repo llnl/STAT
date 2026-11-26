@@ -15,7 +15,14 @@ The most typical usage is to invoke STAT on the job launcher's PID:
 % stat-cl 16842
 ```
 
-Or for Flux, there is an additional step required:
+In the native **Attach** dialog, **Running Jobs** lists jobs for the selected resource manager. **Auto** checks for
+Slurm first and uses Flux when `squeue` is unavailable. Select a Slurm job, then choose its launcher and click **Attach**.
+
+In the **Attach** dialog, select the application from **Running Jobs** or type its ID and click **Search for Job**. For a nested
+job, choose the `ALLOCATION_ID/APPLICATION_JOB_ID` row. Click **Attach** to start the Flux debug launcher and collect
+the first stack trace.
+
+With `stat-cl`, start the Flux debug launcher and attach to its PID.
 
 ```text
 % flux run -n 8 mpi_application &
