@@ -22,7 +22,7 @@ import shutil
 import tempfile
 import time
 
-from remote.stat_client_connection import StatRemoteClient, flux_job_key, resolve_flux_job
+from remote.stat_client_connection import StatRemoteClient, resolve_flux_job
 
 
 def add_remote_arguments(parser):
@@ -398,50 +398,17 @@ class RemoteGUI:
 
     def setup_job_picker(self, box, frame, dialog, attach_button):
         """Connect the job ID field and running-job selector to launcher discovery."""
-        from STATview import gtk
-
         self.add_status_row(dialog.vbox)
         self.attach_button = attach_button
-
-        self.running_jobs = gtk.ComboBoxText()
-        row = gtk.HBox()
-        row.pack_start(gtk.Label('Running Jobs'), False, False, 5)
-        row.pack_start(self.running_jobs, True, True, 5)
-        refresh = gtk.Button('Refresh Jobs')
-        row.pack_start(refresh, False, False, 5)
-        box.pack_start(row, False, False, 0)
-        box.reorder_child(row, 0)
-        row.show_all()
-
         self.filter_entry.set_text('')
         dialog.set_destroy_with_parent(True)
         self.jobid_entry.set_text(self.remote_args.remote_job or '')
 
-        def edit_job(entry):
-            """Clear the previous launcher when the job ID changes."""
-            self.clear_launcher(frame)
-            if self.running_jobs.get_active_id() != entry.get_text().strip():
-                self.running_jobs.set_active(-1)
+        super().setup_job_picker(box, frame, dialog)
 
-        self.jobid_entry.connect('changed', edit_job)
-
-        def select_job(combo):
-            """Resolve launchers for the job selected in the dropdown."""
-            if combo.get_active_id():
-                self.jobid_entry.set_text(combo.get_active_id())
-                self.on_update_process_listing(None, frame, dialog)
-
-        self.running_jobs.connect('changed', select_job)
-        refresh.connect('clicked', lambda w: self.refresh_jobs(frame, dialog))
-
-        def change_scheduler(combo):
-            self.options['Resource Manager'] = combo.get_active_text()
-            self.jobid_entry.set_text('')
-            self.refresh_jobs(frame, dialog)
-
-        # reuse the Attach dialog's scheduler dropdown to filter the Running Jobs dropdown.
-        self.combo_boxes['Resource Manager'].connect('changed', change_scheduler)
-        self.refresh_jobs(frame, dialog, initial=True)
+    def job_picker_scheduler(self):
+        """Return the scheduler selected for remote job discovery."""
+        return self.options['Resource Manager']
 
     def _list_running_jobs(self, scheduler):
         # list jobs across allocations unless the user supplied --flux-allocation.
@@ -452,45 +419,9 @@ class RemoteGUI:
         params = {'scheduler': scheduler, 'recursive': not allocation}
         return self._run('Refreshing jobs…', self.remote.request, 'jobs.list', params)['jobs']
 
-    def refresh_jobs(self, frame, dialog, initial=False):
-        """Reload the selected scheduler's jobs and restore the selection when possible."""
-        scheduler = self.options['Resource Manager'].lower()
-        previous = self.jobid_entry.get_text().strip()
-
-        self.clear_launcher(frame)
-        self.running_jobs.remove_all()
-        self.flux_rows = {}
-        dialog.set_sensitive(False)
-        try:
-            rows = self._list_running_jobs(scheduler)
-            rows = sorted(rows, key=lambda row: not row.get('is_batch', True))
-
-            for row in rows:
-                key = row['jobid']
-                if scheduler == 'flux':
-                    key = flux_job_key(row)
-                    self.flux_rows[key] = row
-                self.running_jobs.append(key, '  '.join((key, row['name'], row['nodelist'])))
-        except Exception as exc:
-            # an explicit allocation and job still work with servers predating Flux listing.
-            if scheduler == 'flux' and self.remote_args.flux_allocation and previous:
-                self.on_update_process_listing(None, frame, dialog)
-                return
-            self.show_job_status(frame, str(exc))
-            return
-        finally:
-            dialog.set_sensitive(True)
-
-        # keep the current job when it is still running.
-        if previous and self.running_jobs.set_active_id(previous):
-            return
-        if initial and previous:
-            self.on_update_process_listing(None, frame, dialog)
-        elif rows:
-            self.running_jobs.set_active(0)
-        else:
-            self.jobid_entry.set_text('')
-            self.show_job_status(frame, 'No running %s jobs.' % self.options['Resource Manager'])
+    def on_update_job_id(self, widget, frame, dialog, entry):
+        """Look up the job entered in the Attach dialog through the remote connection."""
+        self.on_update_process_listing(widget, frame, dialog)
 
     def on_update_process_listing(self, widget, frame, dialog, listing_filter=None):
         """Show matching launchers or explain how to attach to the selected Flux job."""
@@ -580,32 +511,6 @@ class RemoteGUI:
 
         return resolve_flux_job(self._list_running_jobs('flux'), jobid)
 
-    def show_flux_job(self, frame, job, allocation):
-        """Display the selected Flux job in the Attach dialog."""
-        from STATview import gtk
-
-        # Flux starts the debugger on Attach, so show the job details until a launcher PID exists.
-        app = job['jobid']
-        if job.get('name'):
-            app = '%s (%s)' % (job['name'], app)
-
-        fields = [
-            ('Application', app),
-            ('Allocation', allocation),
-            ('Nodes', job.get('nodelist')),
-            ('Tasks', job.get('ntasks')),
-        ]
-
-        grid = gtk.Grid(column_spacing=12, row_spacing=3, margin=6)
-        for index, (title, value) in enumerate(fields):
-            if value is not None and value != '':
-                grid.attach(gtk.Label(label=title, xalign=0), 0, index, 1, 1)
-                grid.attach(gtk.Label(label=str(value), xalign=0, selectable=True), 1, index, 1, 1)
-
-        grid.attach(gtk.Label(label="Click Attach to sample this application's ranks.", xalign=0), 0, len(fields), 2, 1)
-        frame.add(grid)
-        grid.show_all()
-
     def pid_toggle_cb(self, button, pid, command):
         """Update the selected PID and enable Attach when a launcher is selected."""
         super().pid_toggle_cb(button, pid, command)
@@ -621,15 +526,6 @@ class RemoteGUI:
         self.attach_button.set_sensitive(False)
         if frame.get_child():
             frame.remove(frame.get_child())
-
-    def show_job_status(self, frame, message):
-        """Display job discovery instructions or an error in the process list."""
-        from STATview import gtk
-        label = gtk.Label(message)
-        label.set_selectable(True)
-        label.set_line_wrap(True)
-        frame.add(label)
-        label.show()
 
     def attach_cb(self, attach_dialog, launch, serial, application_option=None):
         """Build an attach target from the Flux job ID or selected launcher PID."""
