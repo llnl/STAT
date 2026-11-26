@@ -128,3 +128,6 @@ hostnamefn.*
 # Local documentation builds
 doc/venv/
 doc/_build/
+
+# Local PR validation artifacts
+/validation/

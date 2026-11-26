@@ -46,6 +46,7 @@ from __future__ import print_function
 import os
 import pwd
 import socket
+import shutil
 import sys
 import time
 import uuid
@@ -54,7 +55,7 @@ import ctypes
 from stat_build_info import STAT_VERSION, GIT_COMMIT, GIT_DIRTY
 
 from remote import stat_server_helpers as attach_helper
-from remote.stat_server_flux import FluxDebugHelper
+from remote.stat_server_flux import FluxDebugHelper, list_flux_jobs
 from STAThelper import get_proctab, var_spec_to_string
 
 if hasattr(sys, "getdlopenflags"):
@@ -93,6 +94,7 @@ from STAT import (
     STAT_SAMPLE_PC,
     STAT_SAMPLE_THREADS,
     STAT_SAMPLE_CLEAR_ON_SAMPLE,
+    STAT_SAMPLE_COUNT_REP,
     STAT_SAMPLE_PYTHON,
     STAT_SAMPLE_MODULE_OFFSET,
     STAT_CP_NONE,
@@ -193,7 +195,16 @@ def _stat_error(stat, code, phase, message, context=None):
     except Exception:
         detail = ""
     if detail:
-        message = "%s: %s" % (message, detail)
+        message = "%s: %s" % (message, detail.rstrip())
+        if "daemons reported an error" in detail.lower() and context:
+            if phase == "sample" and context.get("backend") == "pystack":
+                message += "\nCheck the application log to confirm Python has started."
+                if not context.get("with_children"):
+                    message += " If Python runs beneath a launcher, try --with-children."
+            if context.get("log_dir"):
+                message += " Report persistent failures with logs from %s." % context["log_dir"]
+            else:
+                message += " If it persists, rerun with --remote-log-dir <absolute-shared-path> and report the logs."
     return StatRemoteError(code, message, phase, context)
 
 
@@ -221,6 +232,8 @@ class StatSession(object):
         self.stat = STAT_FrontEnd()
         self.state = "new"
         self.backend = DEFAULT_BACKEND
+        self.with_children = False
+        self.log_dir = None
         self.mode = None
         self.remote_host = None
         self.pid = None
@@ -244,6 +257,9 @@ class StatSession(object):
             sample_type |= STAT_SAMPLE_MODULE_OFFSET
         elif stack_type == "function and line":
             sample_type |= STAT_SAMPLE_LINE
+
+        if params.get("edge_type") == "count and representative":
+            sample_type |= STAT_SAMPLE_COUNT_REP
 
         with_threads = _bool(params, "with_threads", False)
 
@@ -311,7 +327,7 @@ class StatSession(object):
             if ret == STAT_OK:
                 return
             if ret != STAT_PENDING_ACK:
-                raise _stat_error(self.stat, "stat_%s_failed" % phase, phase, "STAT operation failed", context)
+                raise _stat_error(self.stat, "stat_%s_failed" % phase, phase, "STAT %s failed" % phase, context)
             if time.monotonic() > deadline:
                 raise StatRemoteError(
                     "stat_%s_timeout" % phase, "Timed out waiting for STAT %s acknowledgement" % phase,
@@ -342,7 +358,15 @@ class StatSession(object):
         if _bool(params, "use_mrnet_printf", False):
             log_type |= STAT_LOG_MRN
         if log_type != STAT_LOG_NONE:
-            ret = self.stat.startLog(log_type, _str(params, "log_dir", os.environ.get("HOME", ".")))
+            log_dir = _str(params, "log_dir", os.environ.get("HOME", "."))
+            try:
+                os.makedirs(log_dir, mode=0o700, exist_ok=True)
+            except (OSError, ValueError) as exc:
+                raise StatRemoteError(
+                    "stat_log_failed", "Could not create log directory %r: %s" % (log_dir, exc), "attach"
+                ) from exc
+            self.log_dir = log_dir
+            ret = self.stat.startLog(log_type, log_dir)
             if ret != STAT_OK:
                 raise _stat_error(self.stat, "stat_log_failed", "attach", "Failed to start STAT log")
 
@@ -385,6 +409,7 @@ class StatSession(object):
         retains ownership and handles cleanup.
         """
         self.backend = _str(params, "backend", DEFAULT_BACKEND)
+        self.with_children = _bool(params, "with_children")
         if _bool(params, "gdb_backend", False):
             # the legacy flag overrides Dyninst (the default), but cannot select GDB alongside PyStack.
             if self.backend not in ("dyninst", "gdb"):
@@ -418,12 +443,16 @@ class StatSession(object):
                     raise StatRemoteError("flux_attach_failed", str(exc), "attach", {"jobid": jobid}) from exc
                 remote_host, launcher_exe, pids = "localhost", "flux-job", [self.flux_helper.pid]
             else:
-                remote_host, launcher_exe, pids = attach_helper.jobid_to_hostname_pid(
-                    self.rm, jobid, self.remote_shell)
+                try:
+                    remote_host, launcher_exe, pids = attach_helper.jobid_to_hostname_pid(
+                        self.rm, jobid, self.remote_shell)
+                except RuntimeError as exc:
+                    raise StatRemoteError("launcher_lookup_failed", str(exc), "attach",
+                                          {"jobid": jobid}) from exc
 
             if remote_host is None or not pids:
                 raise StatRemoteError(
-                    "job_resolve_failed", "Failed to resolve job id %s" % jobid,
+                    "job_resolve_failed", "No running launcher found for job %s. Retry after the workload step starts." % jobid,
                     "attach", {"jobid": jobid})
 
             if len(pids) != 1:
@@ -468,7 +497,7 @@ class StatSession(object):
         # start the appropriate native daemon-launch path for the selected target.
         self.mode = mode
         if mode == "attach":
-            if self.remote_host and self.remote_host != "localhost":
+            if self.remote_host and not attach_helper.is_local_host(self.remote_host):
                 ret = self.stat.attachAndSpawnDaemons(self.pid, self.remote_host)
             else:
                 ret = self.stat.attachAndSpawnDaemons(self.pid)
@@ -609,6 +638,7 @@ class StatSession(object):
         if _str(params, "backend", self.backend) != self.backend:
             raise StatRemoteError("invalid_backend", "Changing backend requires a new attachment", "sample")
 
+        self.with_children = _bool(params, "with_children")
         sample_type = self._sample_type(params)
         # validate native arguments before pausing a running application.
         num_retries = _int(params, "num_retries", DEFAULT_NUM_RETRIES)
@@ -726,7 +756,9 @@ class StatSession(object):
                 raise _stat_error(self.stat, "stat_detach_failed", "detach", "Failed to detach application", self.context())
             self._wait_ack("detach", self.context())
 
-        self.stat.shutDown()
+        # Launcher discovery may fail before native daemon startup is attempted.
+        if self.mode is not None:
+            self.stat.shutDown()
         if self.flux_helper:
             self.flux_helper.close()
         self.state = "detached"
@@ -775,6 +807,8 @@ class StatSession(object):
             "session_id": self.session_id,
             "state": self.state,
             "backend": self.backend,
+            "with_children": self.with_children,
+            "log_dir": self.log_dir,
             "mode": self.mode,
             "remote_host": self.remote_host,
             "pid": self.pid,
@@ -816,15 +850,30 @@ class StatSessionController(object):
             "git_dirty": GIT_DIRTY,
             "cuda_quick": STAT_SAMPLE_CUDA_QUICK is not None,
             "supported_backends": list(SUPPORTED_BACKENDS),
+            "job_schedulers": [name for name, command in (("slurm", "squeue"), ("flux", "flux"))
+                               if shutil.which(command)],
         }
 
     def jobs_list(self, params):
-        """List jobs for interactive selection; listing currently supports Slurm only."""
-        if _scheduler(params) != "slurm":
-            raise StatRemoteError("unsupported_operation", "Job listing currently supports Slurm only", "list")
+        """List the current user's running jobs for the Attach dialog."""
+        scheduler = _str(params, "scheduler", "auto").lower()
+        # only auto checks for available commands, with Flux used when squeue is missing.
+        if scheduler == "auto":
+            if shutil.which("squeue"):
+                scheduler = "slurm"
+            elif shutil.which("flux"):
+                scheduler = "flux"
+            else:
+                raise StatRemoteError("job_list_failed", "Neither squeue nor flux was found on the server", "list")
+
         user = pwd.getpwuid(os.geteuid()).pw_name
         try:
-            jobs = attach_helper.list_jobs("Slurm", user)
+            if scheduler == "flux":
+                jobs = list_flux_jobs(user, _bool(params, "recursive", True))
+            elif scheduler == "slurm":
+                jobs = attach_helper.list_jobs("Slurm", user)
+            else:
+                raise StatRemoteError("unsupported_operation", "Job listing supports Slurm and Flux", "list")
         except RuntimeError as exc:
             raise StatRemoteError("job_list_failed", str(exc), "list") from exc
         return {"jobs": jobs}
@@ -837,15 +886,16 @@ class StatSessionController(object):
         scheduler = _scheduler(params)
         if scheduler == "flux":
             raise StatRemoteError("unsupported_operation", "Use sessions.attach with a Flux job ID", "resolve")
-        remote_host, launcher_exe, pids = attach_helper.jobid_to_hostname_pid(
-            scheduler,
-            jobid,
-            "ssh",
-        )
+        try:
+            remote_host, launcher_exe, pids = attach_helper.jobid_to_hostname_pid(
+                scheduler, jobid, "ssh")
+        except RuntimeError as exc:
+            raise StatRemoteError("launcher_lookup_failed", str(exc), "resolve",
+                                  {"jobid": jobid}) from exc
 
         if remote_host is None or not pids:
             raise StatRemoteError(
-                "job_resolve_failed", "Failed to resolve job id %s" % jobid,
+                "job_resolve_failed", "No running launcher found for job %s. Retry after the workload step starts." % jobid,
                 "resolve", {"jobid": jobid})
         processes = attach_helper.get_remote_process_details(
             "ssh",

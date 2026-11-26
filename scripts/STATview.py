@@ -703,7 +703,7 @@ stat_wait_dialog = STAT_wait_dialog()
 #  \param exception - [optional] the exception object
 #
 #  \n
-def show_error_dialog(text, parent=None, exception=None):
+def show_error_dialog(text, parent=None, exception=None, get_ssh_output=None):
     """Display an error dialog."""
 
     # print traceback information to the terminal
@@ -717,12 +717,34 @@ def show_error_dialog(text, parent=None, exception=None):
     error_dialog = gtk.Dialog('Error', parent)
     label = gtk.Label(text)
     label.set_line_wrap(True)
+    label.set_selectable(True)
     error_dialog.vbox.pack_start(label, True, True, 0)
-    button = gtk.Button(stock=gtk.STOCK_OK)
-    button.connect("clicked", lambda w, d: error_dialog.destroy(), "ok")
-    error_dialog.vbox.pack_start(button, True, True, 0)
+    # the shared wait dialog passes the exception directly for multi-sample failures.
+    if get_ssh_output is None:
+        get_ssh_output = getattr(exception, 'recent_ssh_output', None)
+    if get_ssh_output is not None:
+        details = gtk.Expander(label='Recent SSH output')
+        view = gtk.TextView()
+        view.set_editable(False)
+        view.set_wrap_mode(gtk.WRAP_CHAR)
+        scroll = gtk.ScrolledWindow()
+        scroll.set_size_request(480, 160)
+        scroll.add(view)
+        details.add(scroll)
+
+        def load_output(expander, _property):
+            if expander.get_expanded():
+                output = get_ssh_output() or 'No SSH output received.'
+                view.get_buffer().set_text(output.replace('\x00', '�'))
+
+        details.connect('notify::expanded', load_output)
+        error_dialog.vbox.pack_start(details, False, False, 0)
+
+    error_dialog.add_button(gtk.STOCK_OK, gtk.RESPONSE_OK)
+    error_dialog.set_default_response(gtk.RESPONSE_OK)
     error_dialog.show_all()
     error_dialog.run()
+    error_dialog.destroy()
 
 
 def load_model_cuts(filename):
@@ -1153,6 +1175,7 @@ class STATGraph(xdot_ui_elements.Graph):
         self.source_view_window = None
         self.source_view_notebook = None
         self.source_view_tabs = []
+        self.source_resolver = None
 
     def get_node(self, x, y):
         """Get the node that the specified coordinates fall into."""
@@ -1441,6 +1464,17 @@ class STATGraph(xdot_ui_elements.Graph):
             show_error_dialog('Cannot view "%s" as source: it appears to be a binary file.' % source)
             return True
 
+        source_full_path = None
+        # the remote GUI supplies a callback that fetches source from a sampled rank and returns its local path.
+        if self.source_resolver is not None:
+            try:
+                source_full_path = self.source_resolver(source, node)
+                if source_full_path is None or not os.path.isfile(source_full_path):
+                    raise RuntimeError('Remote source is unavailable')
+            except Exception as exc:
+                show_error_dialog('Cannot retrieve source file "%s":\n%s' % (source, exc))
+                return True
+
         # get the node font and background colors
         for shape in node.shapes:
             if isinstance(shape, xdot_ui_elements.TextShape):
@@ -1471,10 +1505,9 @@ class STATGraph(xdot_ui_elements.Graph):
                     line_nums.append((int(node_iter.attrs["line"].split('\\n')[i].strip(":")), fill_color_string, font_color_string))
         error_msg = ''
         file_dir, file_name = dot_file_path_split(self)
-        source_full_path = None
         if file_dir is not None and file_name is not None:
             cache_file_path = get_cache_file_path(file_dir, source)
-            if os.path.exists(cache_file_path):
+            if source_full_path is None and os.path.exists(cache_file_path):
                 source_full_path = cache_file_path
         if source_full_path == None:
             if os.path.isabs(source):
@@ -3366,11 +3399,9 @@ class STATDotWindow(xdot_ui_window.DotWindow):
         self.create_new_tab()
         self.notebook.set_tab_pos(gtk.POS_TOP)
         self.notebook.set_scrollable(True)
-        try:
-            self.hbox.pack_start(self.notebook, True, True, 0)
-        except:
+        if not hasattr(self, "hbox"):
             self.hbox = gtk.HBox()
-            self.hbox.pack_start(self.notebook, True, True, 0)
+        self.pack_graph_notebook(self.hbox)
         self.vbox.pack_start(self.hbox, True, True, 0)
         if HAVE_TOMOD is True:
             for path in search_paths['include']:
@@ -3399,6 +3430,10 @@ entered as a regular expression"""
         self.spinners = {}
         self.entries = {}
         self.show_all()
+
+    def pack_graph_notebook(self, box):
+        """Insert the call-graph notebook into box. RemoteGUI groups the notebook and an SSH status line in one column."""
+        box.pack_start(self.notebook, True, True, 0)
 
     def update_option(self, w, label, parent_window, option):
         """Generate text entry dialog to update the specified option."""

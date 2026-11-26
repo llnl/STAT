@@ -163,10 +163,18 @@ class SlurmJobDiscovery(object):
         # returns all members; match the exact element shown by squeue's JobID.
         if jobid.isdigit():
             records = [record for record in records if record.get('JobId') == jobid]
-        if len(records) != 1 or records[0].get('JobState') != 'RUNNING':
+        if len(records) != 1:
             raise RuntimeError('Running job %s is no longer available or is ambiguous' % jobid)
 
         fields = records[0]
+        state = fields.get('JobState', 'unknown')
+        reason = fields.get('Reason', '')
+        if state == 'CONFIGURING' or reason.lower() == 'prolog':
+            raise RuntimeError('Slurm is starting job %s. Retry launcher discovery after the prolog finishes.' % jobid)
+        if state != 'RUNNING':
+            detail = ' (%s)' % reason if reason and reason != 'None' else ''
+            raise RuntimeError('Slurm job %s is %s%s.' % (jobid, state, detail))
+
         canonical_id = fields.get('JobId', '')
         if not re.fullmatch(r'[0-9]+', canonical_id):
             raise RuntimeError('Could not read canonical job ID for job %s' % jobid)
@@ -245,22 +253,30 @@ class SlurmJobDiscovery(object):
                 processes = [process for process in parse_processes(output) if process['pid'] in pids]
                 if processes:
                     return host, processes
-            except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
-                failures.append('%s: %s' % (host, exc))
+            except RuntimeError as exc:
+                failures.append(str(exc))
 
-        message = (
-            'Could not find an attachable Slurm / distributed workload (srun or MPI) '
-            'for allocation %s. Start a Slurm / distributed job from within the '
-            'allocation, then refresh processes.' % (job_alias or jobid))
         if failures:
-            message += '\n\nDetails:\n' + '\n'.join(failures)
-        raise RuntimeError(message)
+            raise RuntimeError('\n'.join(failures))
+        return None, []
 
     def _probe_processes(self, command, host):
         """Return process output, treating a launcher that disappeared as an empty result."""
-        result = self.run(command, host)
+        message = 'Could not inspect launcher processes on %s' % host
+        try:
+            result = self.run(command, host)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            detail = ('SSH timed out after %s seconds' % exc.timeout
+                      if isinstance(exc, subprocess.TimeoutExpired) else str(exc))
+            raise RuntimeError('%s: %s' % (message, detail)) from exc
         if result.returncode == 1:
             return ''
         if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or 'Could not inspect launcher processes')
+            detail = result.stderr.strip() or 'command exited with status %s' % result.returncode
+            if 'pam_slurm_adopt' in detail and 'no active jobs' in detail.lower():
+                detail += ' If the job just started, retry after the prolog finishes.'
+            elif 'permission denied (publickey' in detail.lower():
+                detail += (' If the job just started, retry after the Slurm prolog finishes. '
+                           'Also, check passwordless access to nodes.')
+            raise RuntimeError('%s: %s' % (message, detail))
         return result.stdout

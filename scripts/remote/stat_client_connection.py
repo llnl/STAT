@@ -33,6 +33,7 @@ Typical connection lifecycle::
 
 from __future__ import print_function
 
+from collections import deque
 import json
 import os
 import re
@@ -41,6 +42,8 @@ import subprocess
 import sys
 import threading
 import time
+
+from remote.stat_ssh import remote_shell_argv
 
 
 # review and adjust these timeouts based on testing at scale (TODO).
@@ -58,12 +61,46 @@ SSH_CLEANUP_WAIT_SECONDS = 2
 RESPONSE_POLL_INTERVAL_SECONDS = 0.05
 
 
+def flux_job_key(row):
+    """Qualify nested application IDs with the allocation that owns them."""
+    if row.get('allocation'):
+        return row['allocation'] + '/' + row['jobid']
+    return row['jobid']
+
+
+def resolve_flux_job(rows, jobid):
+    """Match a running application by ID or allocation/application pair."""
+    # Flux prints f58 IDs with either an ASCII f or ƒ. Decimal input is also accepted.
+    jobid = jobid.replace('ƒ', 'f')
+
+    matches = []
+    for row in rows:
+        app = row['jobid'].replace('ƒ', 'f')
+        qualified = flux_job_key(row).replace('ƒ', 'f')
+        if jobid in (app, row['id'], qualified):
+            matches.append(row)
+
+    if len(matches) == 1:
+        return matches[0]
+
+    if matches:
+        choices = ', '.join(flux_job_key(row) for row in matches)
+        raise RuntimeError('Ambiguous Flux job ID %s. Choose one of: %s' % (jobid, choices))
+
+    raise RuntimeError('No running Flux application matches %s. List the running jobs and check the application ID.' % jobid)
+
+
 class StatRemoteClientError(Exception):
     """A structured error returned by the server, retaining its diagnostic fields."""
 
-    def __init__(self, error):
+    def __init__(self, error, stderr_lines=()):
         self.error = error
+        self.stderr_lines = stderr_lines
         Exception.__init__(self, error.get("message", "Remote STAT error"))
+
+    def recent_ssh_output(self):
+        """Read the originating connection's output when the GUI expands the details."""
+        return "".join(tuple(self.stderr_lines)).strip()
 
 
 class StatRemoteArchitectureMismatch(RuntimeError):
@@ -99,7 +136,7 @@ class StatRemoteClient(object):
         self.remote_ready = False
         self.architecture_verified_host = None
         self.remote_health = None
-        self.stderr_lines = []
+        self.stderr_lines = None
         self.stderr_reader = None
 
     @classmethod
@@ -108,6 +145,7 @@ class StatRemoteClient(object):
         """Configure SSH; the server starts lazily on the first request."""
         client = cls([], remote_login, ssh_options, remote_prefix,
                      remote_server_host)
+        client.flux_allocation = flux_allocation
         if flux_allocation is not None:
             # the server wrapper loads its runtime environment before calling flux proxy.
             remote_command = "%s --flux-allocation %s" % (remote_command, shlex.quote(flux_allocation))
@@ -120,24 +158,23 @@ class StatRemoteClient(object):
         """Wrap a command in a second SSH hop when the server runs elsewhere."""
         if remote_server_host is None:
             return command
-        return ("exec ssh -T -o BatchMode=yes "
-                "-o GSSAPIDelegateCredentials=yes %s %s") % (
-            shlex.quote(remote_server_host), shlex.quote(command))
+        argv = remote_shell_argv(
+            remote_server_host, command,
+            options=["-o", "GSSAPIDelegateCredentials=yes"])
+        return "exec " + " ".join(shlex.quote(arg) for arg in argv)
 
     def _rebuild_ssh_argv(self):
         """Build the persistent server command using the selected SSH route."""
-        self.argv = ["ssh", "-T"]
-        self.argv.extend(self.ssh_options)
-        self.argv.extend(["-o", "BatchMode=yes", self.remote_login,
-                          self._server_command(
-                              self.remote_command, self.remote_server_host)])
+        self.argv = remote_shell_argv(
+            self.remote_login,
+            self._server_command(self.remote_command, self.remote_server_host),
+            options=self.ssh_options)
 
     def _run_ssh(self, command, server_host=None, timeout=SSH_OPERATION_TIMEOUT_SECONDS):
         """Run a bounded setup probe independently of the persistent JSON connection."""
-        argv = ["ssh", "-T"]
-        argv.extend(self.ssh_options)
-        argv.extend(["-o", "BatchMode=yes", self.remote_login,
-                     self._server_command(command, server_host)])
+        argv = remote_shell_argv(
+            self.remote_login, self._server_command(command, server_host),
+            options=self.ssh_options)
         return subprocess.run(
             argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             universal_newlines=True, check=False, timeout=timeout)
@@ -163,11 +200,26 @@ class StatRemoteClient(object):
         result = self._run_ssh(command, server_host)
         lines = result.stdout.splitlines()
         machines = re.findall(r"^\s*Machine:\s*(.+)$", result.stdout, re.MULTILINE)
+
         if result.returncode != 0 or not lines or len(machines) != 2:
-            raise RuntimeError(
-                "Could not inspect %s/bin/STATD on %s. Check --remote-login, "
-                "--remote-server-host, --remote-prefix, and passwordless SSH."
-                % (remote_prefix, host))
+            message = "Could not inspect %s on %s." % (statd, host)
+            detail = result.stderr.strip()
+            if detail:
+                message += " " + detail
+
+            # additional message for a few common error patterns seen
+            if "pam_slurm_adopt" in detail and "no active jobs" in detail.lower():
+                message += " If the job just started, retry after the prolog finishes."
+            elif "permission denied (publickey" in detail.lower():
+                if server_host:
+                    message += (" If the job just started, retry after the Slurm prolog finishes."
+                                " Also, check passwordless access to nodes.")
+                else:
+                    message += " Check passwordless SSH access to the login host."
+            else:
+                message += " Check --remote-login, --remote-server-host, and --remote-prefix."
+
+            raise RuntimeError(message)
 
         host_arch = lines[0]
         host_machine, statd_arch = machines
@@ -196,24 +248,23 @@ class StatRemoteClient(object):
                 raise RuntimeError("Remote STAT client has been shut down")
             if self.proc is not None:
                 return
-            self.stderr_lines = []
+            self.stderr_lines = deque(maxlen=128)
             self.proc = subprocess.Popen(
                 self.argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, universal_newlines=True, bufsize=1)
             self.stderr_reader = threading.Thread(
-                target=self._read_stderr, args=(self.proc.stderr,))
+                target=self._read_stderr, args=(self.proc.stderr, self.stderr_lines))
             self.stderr_reader.daemon = True
             self.stderr_reader.start()
 
-    def _read_stderr(self, stream):
-        """Forward server diagnostics and retain a small startup error tail."""
+    def _read_stderr(self, stream, lines):
+        """Forward complete diagnostics and keep a bounded excerpt for error dialogs."""
         try:
             for line in stream:
-                sys.stderr.write(line)
-                sys.stderr.flush()
-                self.stderr_lines.append(line)
-                if len(self.stderr_lines) > 20:
-                    self.stderr_lines.pop(0)
+                lines.append(line if len(line) <= 4096 else line[:4096] + "…\n")
+                if sys.stderr is not None:
+                    sys.stderr.write(line)
+                    sys.stderr.flush()
         except (ValueError, OSError):
             # close() may release the pipe while a launched job still holds it.
             if not stream.closed:
@@ -351,7 +402,7 @@ class StatRemoteClient(object):
                 if self.stderr_reader is not None:
                     self.stderr_reader.join(SSH_CLEANUP_WAIT_SECONDS)
                 message = "Remote STAT server exited before replying to %s" % method
-                details = "".join(self.stderr_lines).strip()
+                details = "".join(list(self.stderr_lines)[-20:]).strip()
                 if details:
                     message += ":\n%s" % details
                 raise EOFError(message)
@@ -370,7 +421,19 @@ class StatRemoteClient(object):
                 continue
 
             if not response.get("ok"):
-                raise StatRemoteClientError(response.get("error", {}))
+                error = response.get("error", {})
+                if method == "sessions.attach" and error.get("code") == "stat_attach_failed":
+                    message = error["message"] + "\nIf the workload just started, retry after it is ready."
+                    log_dir = error.get("context", {}).get("log_dir")
+
+                    if log_dir:
+                        message += " If it persists, report stderr and logs from %s." % log_dir
+                    else:
+                        message += (" If it persists, rerun with --remote-log-dir <absolute-shared-path>"
+                                    " and report stderr and logs.")
+                    error["message"] = message
+
+                raise StatRemoteClientError(error, self.stderr_lines)
             return response.get("result")
 
     @staticmethod

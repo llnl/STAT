@@ -14,9 +14,9 @@ endif
 if ENABLE_GUI
 bin_SCRIPTS += stat-gui-server stat-gui-remote-cli
 remotedir = $(pythondir)/remote
-remote_PYTHON = remote/__init__.py remote/stat_client_connection.py
+remote_PYTHON = remote/__init__.py remote/stat_client_connection.py remote/stat_client_gui.py remote/stat_client_slurm.py
 remote_PYTHON += remote/stat_server_session.py remote/stat_server.py remote/stat_client_cli.py
-remote_PYTHON += remote/stat_server_helpers.py remote/stat_server_slurm.py remote/stat_server_flux.py
+remote_PYTHON += remote/stat_server_helpers.py remote/stat_server_slurm.py remote/stat_server_flux.py remote/stat_ssh.py
 python_PYTHON += STATGUI.py STATview.py
 
 if ENABLE_PYTHON2

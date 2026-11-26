@@ -16,6 +16,15 @@ from setuptools.command.sdist import sdist
 
 SOURCE_DIR = Path(__file__).resolve().parent
 SHARED_MODULES = ('STATmain.py', 'STATGUI.py', 'STATview.py', 'STAThelper.py')
+CLIENT_MODULES = (
+    '__init__.py',
+    'stat_client_cli.py',
+    'stat_client_connection.py',
+    'stat_ssh.py',
+    'stat_client_gui.py',
+    'stat_client_slurm.py',
+    'stat_server_slurm.py',
+)
 RESOURCES = ('STATlogo.gif', 'LICENSE')
 
 
@@ -31,11 +40,20 @@ def resource_path(name):
     return local if local.is_file() else SOURCE_DIR.parent.parent / name
 
 
+def client_path(name):
+    local = SOURCE_DIR / 'remote' / name
+    return local if local.is_file() else SOURCE_DIR.parent / 'remote' / name
+
+
 class BuildPy(build_py):
     """Bundle shared modules without changing their native source locations."""
 
     def run(self):
         super().run()
+        remote = Path(self.build_lib) / 'remote'
+        remote.mkdir(exist_ok=True)
+        for name in CLIENT_MODULES:
+            self.copy_file(str(client_path(name)), str(remote / name))
         for name in SHARED_MODULES:
             self.copy_file(str(shared_path(name)), str(Path(self.build_lib) / name))
 
@@ -47,6 +65,10 @@ class SDist(sdist):
         super().make_release_tree(base_dir, files)
         for name in SHARED_MODULES:
             shutil.copyfile(shared_path(name), Path(base_dir) / name)
+        remote = Path(base_dir) / 'remote'
+        remote.mkdir(exist_ok=True)
+        for name in CLIENT_MODULES:
+            shutil.copyfile(client_path(name), remote / name)
         for name in RESOURCES:
             shutil.copyfile(resource_path(name), Path(base_dir) / name)
 

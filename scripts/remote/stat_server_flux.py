@@ -8,6 +8,7 @@ STAT needs the PID of a process that exposes the application's ranks. Start
 that process's PID once its rank table is ready. Keep it alive until STAT detaches.
 """
 
+import json
 import re
 import subprocess
 import threading
@@ -17,6 +18,45 @@ import threading
 # TODO: verify whether Flux exposes a more robust, machine-readable readiness signal.
 FLUX_SHELL_START = re.compile(rb"^[ \t]*-?\d+(?:[.,]\d+)?s:[ \t]*exec\.shell\.start(?:\s|$)")
 STDERR_READ_SIZE = 4096
+
+
+def list_flux_jobs(user, recursive=True):
+    """List running applications and the allocation to proxy into for each one."""
+    command = ["flux", "jobs", "--json", "--filter=run", "--user", user]
+    if recursive:
+        command.extend(["--recursive", "--level=1"])
+
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(exc.stderr.strip() or "Flux job listing failed") from exc
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError("Could not list Flux jobs: %s" % exc) from exc
+
+    def display_id(job):
+        # flux-core 0.83 added the printable job ID used by the CLI and GUI.
+        if "jobid" not in job:
+            raise RuntimeError("Automatic Flux job discovery requires flux-core 0.83.0 or newer. "
+                               "To attach directly, supply the allocation ID and application job ID.")
+        return job["jobid"]
+
+    def application(job, allocation=None):
+        return {"jobid": display_id(job), "id": str(job["id"]), "name": job.get("name", ""),
+                "ntasks": job.get("ntasks"), "nodelist": job.get("nodelist", ""), "allocation": allocation}
+
+    rows = []
+    for job in json.loads(result.stdout)["jobs"]:
+        if not job.get("uri"):
+            rows.append(application(job))
+            continue
+
+        # a job with a broker URI is an allocation. Attach to the applications inside it.
+        allocation = display_id(job)
+        for child in job.get("jobs", []):
+            if not child.get("uri"):
+                rows.append(application(child, allocation))
+
+    return rows
 
 
 class FluxDebugHelper:
